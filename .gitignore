@@ -1,0 +1,15 @@
+.DS_Store
+node_modules
+.worktrees
+.sst
+.env
+.idea
+.vscode
+openapi.json
+playground
+tmp
+dist
+.turbo
+*.exe
+*.zip
+sdks/vscode/.vscode-test/
