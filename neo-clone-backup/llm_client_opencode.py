@@ -1,0 +1,282 @@
+"""
+llm_client_opencode.py - Opencode-compatible LLM client for Neo-Clone
+
+This module provides an enhanced LLM client that works seamlessly with Opencode's
+model selection system while maintaining backward compatibility with Neo-Clone's
+original LLM client pattern.
+
+Features:
+- Integrates with Opencode's model selection
+- Supports provider/model format translation
+- Maintains single-instance client pattern
+- Graceful fallback when Opencode is unavailable
+- Supports multiple LLM providers (Ollama, OpenAI, Anthropic, etc.)
+"""
+
+import logging
+import requests
+import json
+import subprocess
+from typing import List, Dict, Optional, Any
+from dataclasses import dataclass
+from config_opencode import Config, get_current_opencode_model, is_opencode_available
+import time
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class LLMResponse:
+    """Standardized LLM response format"""
+    content: str
+    model: str
+    provider: str
+    usage: Optional[Dict[str, int]] = None
+    finish_reason: Optional[str] = None
+    response_time: float = 0.0
+
+class OpencodeLLMClient:
+    """Enhanced LLM client with Opencode integration"""
+    
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.session = requests.Session()
+        self.available_models = self._discover_available_models()
+        self.current_model = self._initialize_model()
+        
+    def _discover_available_models(self) -> List[str]:
+        """Discover available models from various sources"""
+        models = []
+        
+        # Check if Opencode is available
+        if is_opencode_available():
+            try:
+                result = subprocess.run(
+                    ['opencode', 'models'], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        line = line.strip()
+                        if line and '/' in line and not line.startswith('Available models'):
+                            models.append(line)
+                    logger.info(f"Discovered {len(models)} models from Opencode")
+            except Exception as e:
+                logger.warning(f"Failed to get Opencode models: {e}")
+        
+        # Add fallback models
+        if not models:
+            models = [
+                "ollama/llama2",
+                "ollama/codellama", 
+                "openai/gpt-3.5-turbo",
+                "openai/gpt-4",
+                "anthropic/claude-3-sonnet"
+            ]
+            logger.info("Using fallback model list")
+        
+        return models
+    
+    def _initialize_model(self) -> str:
+        """Initialize the current model from config or Opencode"""
+        # Check Opencode config first
+        opencode_model = get_current_opencode_model()
+        if opencode_model:
+            logger.info(f"Using Opencode model: {opencode_model}")
+            return opencode_model
+        
+        # Use Neo-Clone config
+        if self.cfg.opencode_model:
+            logger.info(f"Using configured Opencode model: {self.cfg.opencode_model}")
+            return self.cfg.opencode_model
+        
+        # Fallback to provider/model format
+        return f"{self.cfg.provider}/{self.cfg.model_name}"
+    
+    def _get_api_client(self, provider: str) -> 'APIAdapter':
+        """Get appropriate API adapter for the provider"""
+        adapters = {
+            'ollama': OllamaAdapter(self.cfg),
+            'openai': OpenAIAdapter(self.cfg), 
+            'anthropic': AnthropicAdapter(self.cfg),
+            'api': GenericAPIAdapter(self.cfg)  # For other providers
+        }
+        return adapters.get(provider, GenericAPIAdapter(self.cfg))
+    
+    def chat(self, messages: List[Dict[str, str]], timeout: int = 30) -> LLMResponse:
+        """Send chat request with timing and error handling"""
+        start_time = time.time()
+        
+        try:
+            # Parse current model
+            if '/' in self.current_model:
+                provider, model = self.current_model.split('/', 1)
+            else:
+                provider, model = self.cfg.provider, self.current_model
+            
+            # Get appropriate adapter
+            adapter = self._get_api_client(provider)
+            
+            # Make request
+            response = adapter.chat(messages, model, timeout)
+            response.response_time = time.time() - start_time
+            
+            logger.info(f"LLM request completed: {provider}/{model} ({response.response_time:.2f}s)")
+            return response
+            
+        except Exception as e:
+            response_time = time.time() - start_time
+            error_msg = f"[Neo Error] LLM request failed: {str(e)}"
+            logger.error(f"LLM request failed: {e}")
+            
+            return LLMResponse(
+                content=error_msg,
+                model=self.current_model,
+                provider="error",
+                response_time=response_time
+            )
+    
+    def set_model(self, model: str):
+        """Set the current model (compatible with Opencode selection)"""
+        if model in self.available_models:
+            self.current_model = model
+            logger.info(f"Model set to: {model}")
+        else:
+            logger.warning(f"Model {model} not in available models list")
+            self.current_model = model
+    
+    def get_current_model(self) -> str:
+        """Get the currently selected model"""
+        return self.current_model
+    
+    def get_available_models(self) -> List[str]:
+        """Get list of available models"""
+        return self.available_models.copy()
+    
+    def refresh_models(self):
+        """Refresh the list of available models"""
+        self.available_models = self._discover_available_models()
+
+class APIAdapter:
+    """Base class for LLM API adapters"""
+    
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+    
+    def chat(self, messages: List[Dict[str, str]], model: str, timeout: int) -> LLMResponse:
+        raise NotImplementedError
+
+class OllamaAdapter(APIAdapter):
+    """Adapter for Ollama API"""
+    
+    def chat(self, messages: List[Dict[str, str]], model: str, timeout: int) -> LLMResponse:
+        url = self.cfg.api_endpoint.rstrip("/") + "/api/chat"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": self.cfg.max_tokens,
+            "temperature": self.cfg.temperature,
+        }
+        
+        resp = self.session.post(url, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        return LLMResponse(
+            content=data.get("message", {}).get("content", "No response."),
+            model=model,
+            provider="ollama"
+        )
+
+class OpenAIAdapter(APIAdapter):
+    """Adapter for OpenAI API"""
+    
+    def chat(self, messages: List[Dict[str, str]], model: str, timeout: int) -> LLMResponse:
+        if not self.cfg.api_key:
+            raise ValueError("OpenAI API key required")
+        
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.cfg.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": self.cfg.max_tokens,
+            "temperature": self.cfg.temperature,
+        }
+        
+        resp = self.session.post(url, headers=headers, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        return LLMResponse(
+            content=data["choices"][0]["message"]["content"],
+            model=model,
+            provider="openai",
+            usage=data.get("usage"),
+            finish_reason=data["choices"][0].get("finish_reason")
+        )
+
+class AnthropicAdapter(APIAdapter):
+    """Adapter for Anthropic API"""
+    
+    def chat(self, messages: List[Dict[str, str]], model: str, timeout: int) -> LLMResponse:
+        if not self.cfg.api_key:
+            raise ValueError("Anthropic API key required")
+        
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": self.cfg.api_key,
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01"
+        }
+        
+        # Convert messages format for Anthropic
+        system_msg = None
+        anthropic_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_msg = msg["content"]
+            else:
+                anthropic_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
+        
+        payload = {
+            "model": model,
+            "max_tokens": self.cfg.max_tokens,
+            "messages": anthropic_messages
+        }
+        
+        if system_msg:
+            payload["system"] = system_msg
+        
+        resp = self.session.post(url, headers=headers, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        return LLMResponse(
+            content=data["content"][0]["text"],
+            model=model,
+            provider="anthropic",
+            usage=data.get("usage"),
+            finish_reason=data.get("stop_reason")
+        )
+
+class GenericAPIAdapter(APIAdapter):
+    """Generic adapter for other API providers"""
+    
+    def chat(self, messages: List[Dict[str, str]], model: str, timeout: int) -> LLMResponse:
+        # This would need to be customized based on the specific API
+        # For now, return an error message
+        raise ValueError(f"Generic API adapter not configured for provider: {self.cfg.provider}")
+
+# Backward compatibility
+class LLMClient(OpencodeLLMClient):
+    """Backward compatible LLM client"""
+    pass

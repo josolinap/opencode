@@ -1,0 +1,131 @@
+{
+  "modules": [
+    {
+      "name": "MiniMaxReasoningTrace",
+      "purpose": "Captures and formats detailed reasoning traces with step-by-step analysis, confidence tracking, and performance metrics for transparent AI decision-making"
+    },
+    {
+      "name": "DynamicSkillTemplate", 
+      "purpose": "Template system for generating BaseSkill-compliant Python code dynamically, including file operations, data processing, and web operation templates"
+    },
+    {
+      "name": "MiniMaxAgent",
+      "purpose": "Main class inheriting from BaseSkill providing intent analysis, dynamic skill generation, and reasoning capabilities with confidence scoring"
+    },
+    {
+      "name": "Brain Integration",
+      "purpose": "Seamless integration with Neo-Clone's brain.py for intent parsing, skill routing, and conversation history management"
+    },
+    {
+      "name": "Skill Registry",
+      "purpose": "Auto-discovery and registration system via skills/__init__.py that dynamically finds and registers MiniMax Agent as available skill"
+    },
+    {
+      "name": "Logging System",
+      "purpose": "Structured logging integration with Neo-Clone's logging_system.py for interaction tracking, performance metrics, and error logging"
+    },
+    {
+      "name": "Pattern Matching Engine",
+      "purpose": "Regex-based pattern matching system for 5 intent types (code_generation, data_analysis, web_operations, file_operations, skill_creation)"
+    },
+    {
+      "name": "Context Analysis",
+      "purpose": "Contextual understanding system that analyzes conversation history and user preferences to improve intent classification accuracy"
+    }
+  ],
+  "public_api": [
+    {
+      "method": "analyze_user_input(user_text: str, context: List[str] = None) -> Dict[str, Any]",
+      "purpose": "Analyzes user input to determine intent, extract entities, calculate confidence scores, and provide skill recommendations with detailed reasoning traces"
+    },
+    {
+      "method": "generate_dynamic_skill(skill_name: str, description: str, parameters: Dict[str, Any] = None, context: List[str] = None) -> Dict[str, Any]",
+      "purpose": "Generates complete Python skill code based on requirements, creates BaseSkill-compliant classes, and provides metadata for registration"
+    },
+    {
+      "method": "save_generated_skill(skill_code: str, file_path: str = None) -> Dict[str, Any]",
+      "purpose": "Saves dynamically generated skill code to file system with automatic path resolution and validation"
+    },
+    {
+      "method": "execute(params: Dict[str, Any]) -> Dict[str, Any]",
+      "purpose": "Main execution interface implementing BaseSkill pattern, routing to appropriate mode (analyze/generate/reason) based on parameters"
+    },
+    {
+      "method": "_suggest_skills(intent: str, technologies: List[str], actions: List[str]) -> List[str]",
+      "purpose": "Internal method providing AI-powered skill recommendations based on detected intent, technologies, and user actions"
+    },
+    {
+      "method": "_calculate_complexity(text: str, intent_scores: Dict[str, float]) -> float",
+      "purpose": "Calculates request complexity score (0.0-1.0) based on text length, intent diversity, and technical term density"
+    },
+    {
+      "method": "_generate_implementation(description: str, context: List[str]) -> Tuple[str, str]",
+      "purpose": "Generates appropriate implementation code and example usage based on description analysis and available templates"
+    }
+  ],
+  "data_flow": "USER INPUT → Text Preprocessing (cleaning, tokenization) → Pattern Matching (5 intent types with regex) → Confidence Scoring (0.0-1.0 per intent) → Intent Classification (primary + fallback to 'conversational') → Entity Extraction (actions, technologies, keywords) → Context Analysis (relevance scoring) → Reasoning Trace Generation (step-by-step with timestamps) → Skill Recommendation (based on intent + detected tech) → Complexity Assessment (multi-factor scoring) → Return Structured Result (intent, confidence, trace, suggestions, metadata)",
+  "pseudocode": "FUNCTION analyze_user_input(user_text, context):\n    INITIALIZE reasoning_trace\n    SET cleaned_text = normalize(user_text)\n    SET words = tokenize(cleaned_text)\n    \n    FOR each intent_type in [code_generation, data_analysis, web_operations, file_operations, skill_creation]:\n        SET pattern_score = 0\n        FOR each regex_pattern in intent_patterns[intent_type]:\n            IF pattern_matches(cleaned_text, regex_pattern):\n                pattern_score += 1\n        SET intent_scores[intent_type] = pattern_score / len(intent_patterns[intent_type])\n    \n    IF any(intent_scores > 0):\n        SET primary_intent = max(intent_scores)\n        SET confidence = intent_scores[primary_intent]\n    ELSE:\n        SET primary_intent = 'conversational'\n        SET confidence = 0.1\n    \n    SET detected_actions = extract_action_words(words)\n    SET detected_technologies = extract_tech_words(words)\n    SET matched_keywords = extract_keywords(words, intent_patterns)\n    \n    RELEVANCE_ITEMS = analyze_context_relevance(context, words)\n    ADD reasoning_trace.step('Context Analysis', f'Analyzed {len(context)} items, found {len(RELEVANCE_ITEMS)} relevant')\n    ADD reasoning_trace.step('Intent Analysis', f'{user_text[:50]}... → {primary_intent} (confidence: {confidence:.2f})')\n    \n    SUGGESTED_SKILLS = suggest_skills(primary_intent, detected_technologies, detected_actions)\n    COMPLEXITY = calculate_complexity(user_text, intent_scores)\n    \n    RETURN {\n        'primary_intent': primary_intent,\n        'confidence': confidence,\n        'intent_scores': intent_scores,\n        'detected_actions': detected_actions,\n        'detected_technologies': detected_technologies,\n        'matched_keywords': matched_keywords,\n        'reasoning_trace': reasoning_trace.to_dict(),\n        'suggested_skills': SUGGESTED_SKILLS,\n        'complexity_score': COMPLEXITY\n    }",
+  "sample_traces": [
+    {
+      "input": "I need to create a Python script to process CSV files and generate charts",
+      "parsed_intent": "code_generation",
+      "confidence": 0.33,
+      "skill_selected": "code_generation + data_inspector",
+      "reasoning_steps": [
+        {"step": "Context Analysis", "details": "Analyzed 0 context items, found 0 relevant", "timestamp": 0.001},
+        {"step": "Intent Analysis", "details": "Analyzed input 'I need to create a Python script to process CSV fi...' → code_generation (confidence: 0.33)", "timestamp": 0.002},
+        {"step": "Keyword Detection", "details": "Found keywords: create, python, csv, process, generate", "timestamp": 0.003}
+      ],
+      "generated_output": "Primary Intent: code_generation (confidence: 0.33), Detected Actions: ['create', 'process', 'generate'], Technologies: ['python', 'csv'], Suggested Skills: ['text_analysis', 'code_generation', 'data_inspector'], Complexity Score: 0.55"
+    },
+    {
+      "input": "Build a web API for user authentication",
+      "parsed_intent": "conversational",
+      "confidence": 0.10,
+      "skill_selected": "web_search (fallback)",
+      "reasoning_steps": [
+        {"step": "Context Analysis", "details": "Analyzed 0 context items, found 0 relevant", "timestamp": 0.001},
+        {"step": "Intent Analysis", "details": "Analyzed input 'Build a web API for user authentication...' → conversational (confidence: 0.10)", "timestamp": 0.002}
+      ],
+      "generated_output": "Primary Intent: conversational (confidence: 0.10), Detected Actions: ['build'], Technologies: ['web', 'api'], Suggested Skills: ['web_search'], Complexity Score: 0.18"
+    },
+    {
+      "input": "search for Python tutorials",
+      "parsed_intent": "web_operations",
+      "confidence": 0.67,
+      "skill_selected": "web_search",
+      "reasoning_steps": [
+        {"step": "Context Analysis", "details": "Analyzed 0 context items, found 0 relevant", "timestamp": 0.001},
+        {"step": "Intent Analysis", "details": "Analyzed input 'search for Python tutorials' → web_operations (confidence: 0.67)", "timestamp": 0.002},
+        {"step": "Keyword Detection", "details": "Found keywords: search, python, tutorials", "timestamp": 0.003}
+      ],
+      "generated_output": "Primary Intent: web_operations (confidence: 0.67), Detected Actions: ['search'], Technologies: ['python'], Suggested Skills: ['web_search', 'text_analysis'], Complexity Score: 0.12"
+    },
+    {
+      "input": "Make a tool to organize my files automatically",
+      "parsed_intent": "code_generation",
+      "confidence": 0.33,
+      "skill_selected": "file_manager + code_generation",
+      "reasoning_steps": [
+        {"step": "Context Analysis", "details": "Analyzed 0 context items, found 0 relevant", "timestamp": 0.001},
+        {"step": "Intent Analysis", "details": "Analyzed input 'Make a tool to organize my files automatically...' → code_generation (confidence: 0.33)", "timestamp": 0.002},
+        {"step": "Keyword Detection", "details": "Found keywords: make, tool, files, organize, automatically", "timestamp": 0.003}
+      ],
+      "generated_output": "Primary Intent: code_generation (confidence: 0.33), Detected Actions: ['make'], Technologies: [], Suggested Skills: ['text_analysis', 'code_generation'], Complexity Score: 0.49"
+    },
+    {
+      "input": "Create a skill for analyzing log files",
+      "parsed_intent": "skill_creation",
+      "confidence": 1.0,
+      "skill_selected": "minimax_agent",
+      "reasoning_steps": [
+        {"step": "Context Analysis", "details": "Analyzed 0 context items, found 0 relevant", "timestamp": 0.001},
+        {"step": "Intent Analysis", "details": "Analyzed input 'Create a skill for analyzing log files' → skill_creation (confidence: 1.0)", "timestamp": 0.002},
+        {"step": "Keyword Detection", "details": "Found keywords: create, skill, analyzing, files", "timestamp": 0.003}
+      ],
+      "generated_output": "Primary Intent: skill_creation (confidence: 1.0), Detected Actions: ['create'], Technologies: [], Suggested Skills: ['minimax_agent', 'code_generation'], Complexity Score: 0.40"
+    }
+  ],
+  "security_considerations": "CODE GENERATION RISKS: Dynamically generated Python code may contain malicious patterns, infinite loops, or system commands. MITIGATION: Implement code validation before execution, sandbox generated code, limit system access, and use static analysis on generated skills. FILE SYSTEM ACCESS: Generated skills can read/write files potentially exposing sensitive data or overwriting system files. MITIGATION: Validate file paths, restrict access to safe directories, implement user confirmation for destructive operations, and use allowlist for file operations. INPUT VALIDATION: User input for skill generation may contain code injection attempts or malicious payloads. MITIGATION: Sanitize all inputs, use regex patterns for validation, implement character limits, and filter potentially dangerous keywords. CONTEXT LEAKS: Reasoning traces may inadvertently expose sensitive conversation context or user data. MITIGATION: Anonymize trace data, implement data retention policies, and allow users to opt-out of trace logging. RESOURCE EXHAUSTION: Multiple concurrent skill generations could overwhelm system resources. MITIGATION: Implement rate limiting, queue management, and resource quotas. DEPENDENCY ISSUES: Generated skills may import libraries that are not available or safe. MITIGATION: Validate imports, provide fallback implementations, and maintain whitelist of allowed libraries.",
+  "suggested_improvements": "ADVANCED NLP INTEGRATION: Replace regex-based pattern matching with spaCy or NLTK for better semantic understanding and entity recognition. LEARNING SYSTEM: Implement feedback learning where user corrections to intent analysis improve future classifications. TEMPLATE EXPANSION: Add more skill templates for database operations, machine learning workflows, API integrations, and visualization tasks. CACHING LAYER: Implement intelligent caching for frequently used skills and analysis results to improve performance. VISUAL INTERFACE: Create GUI component for skill generation, editing, and management with real-time preview. SEMANTIC SIMILARITY: Use sentence transformers or similar models for better intent matching beyond keyword patterns. CODE QUALITY: Integrate static analysis, linting, and security scanning for generated skills before saving. DISTRIBUTED EXECUTION: Enable generated skills to run in isolated containers or subprocesses for enhanced security. PERSISTENT LEARNING: Store successful pattern matches and skill generations to improve auto-completion suggestions. INTEGRATION APIs: Provide REST API endpoints for external systems to trigger skill generation and analysis. DEBUGGING TOOLS: Add step-through debugging for reasoning traces with interactive inspection capabilities. TEMPLATE EDITOR: GUI-based template creation system allowing users to design custom skill templates visually."
+}

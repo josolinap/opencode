@@ -154,7 +154,7 @@ export namespace SessionPrompt {
         state().queued.set(input.sessionID, queue)
       })
     }
-    const agent = await Agent.get(input.agent ?? "build")
+    const agent = await Agent.get(input.agent ?? "neo-clone")
     const model = await resolveModel({
       agent,
       model: input.model,
