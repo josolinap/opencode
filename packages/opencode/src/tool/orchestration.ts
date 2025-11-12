@@ -25,7 +25,7 @@ export const OrchestrationTool = Tool.define("orchestration", {
       .optional()
       .describe("Execution options"),
   }),
-  async execute(params): Promise<{ title: string; metadata: any; output: any }> {
+  async execute(params, ctx): Promise<{ title: string; metadata: any; output: any }> {
     try {
       log.info("Executing orchestration workflow", { workflowId: params.workflowId })
 
