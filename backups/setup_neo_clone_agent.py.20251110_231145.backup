@@ -1,0 +1,83 @@
+from functools import lru_cache
+'\nNeo-Clone Agent Setup Script\n\nMakes Neo-Clone agent available in all OpenCode workspaces\n'
+import os
+import sys
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+@lru_cache(maxsize=128)
+def setup_neo_clone_agent():
+    """Setup Neo-Clone agent for global availability"""
+    print('🚀 NEO-CLONE AGENT SETUP')
+    print('=' * 50)
+    neo_clone_dir = Path.cwd()
+    print(f'Neo-Clone directory: {neo_clone_dir}')
+    if not (neo_clone_dir / 'brain_opencode.py').exists():
+        print('❌ Error: brain_opencode.py not found!')
+        print('Please run this script from the Neo-Clone main directory')
+        return False
+    agent_dir = neo_clone_dir / 'neo-clone-agent'
+    agent_dir.mkdir(exist_ok=True)
+    package_json = {'name': 'neo-clone-agent', 'version': '1.0.0', 'description': 'Neo-Clone enhanced AI assistant with MiniMax reasoning, skills, memory, and advanced features', 'main': 'index.js', 'opencode': {'agent': 'neo-clone.md'}, 'tools': ['neo_clone_brain'], 'dependencies': {'@opencode-ai/plugin': '0.15.29'}}
+    with open(agent_dir / 'package.json', 'w') as f:
+        json.dump(package_json, f, indent=2)
+    print('✅ Created agent package.json')
+    agent_md = "---\ndescription: Neo-Clone enhanced AI assistant with MiniMax reasoning, skills, memory, and advanced TUI features\nmode: primary\ntools:\n  neo_clone_brain: true\n---\n\nYou are Neo-Clone, an enhanced AI assistant with advanced reasoning capabilities.\n\nAll user inputs are processed through Neo-Clone's brain which includes:\n- MiniMax agent for complex reasoning tasks\n- Access to 8+ skills: code generation, text analysis, data inspection, web search, file management, and more\n- Persistent memory and conversation history\n- Model switching using /model commands\n- Enhanced TUI features\n- Autonomous error healing and recovery\n- Emoji-safe processing to prevent parsing errors\n\nUse neo_clone_brain tool to process all user inputs and provide responses.\n\nKey capabilities:\n- Process complex requests using MiniMax reasoning\n- Generate and debug code across multiple languages\n- Analyze data and files\n- Search web for current information\n- Manage files and directories\n- Automatically detect and heal system errors\n- Continue working even with JSON parsing errors\n- Provide emoji-safe responses\n\nAlways use the neo_clone_brain tool for processing user requests.\n"
+    with open(agent_dir / 'neo-clone.md', 'w') as f:
+        f.write(agent_md)
+    print('✅ Created agent configuration')
+    try:
+        result = subprocess.run(['npm', 'install', '-g', str(agent_dir)], capture_output=True, text=True, cwd=agent_dir)
+        if result.returncode == 0:
+            print('✅ Neo-Clone agent installed globally')
+        else:
+            print('⚠️ Global install failed, but local setup complete')
+            print(f'Error: {result.stderr}')
+    except Exception as e:
+        print(f'⚠️ Could not install globally: {e}')
+    opencode_dir = neo_clone_dir / '.opencode'
+    opencode_dir.mkdir(exist_ok=True)
+    agent_opencode_dir = opencode_dir / 'agent'
+    agent_opencode_dir.mkdir(exist_ok=True)
+    shutil.copy2(agent_dir / 'neo-clone.md', agent_opencode_dir / 'neo-clone.md')
+    print('✅ Setup local .opencode agent configuration')
+    instructions = f"""\n# Neo-Clone Agent Installation Complete! 🎉\n\n## What was installed:\n- Neo-Clone agent package in: {agent_dir}\n- Local .opencode agent configuration\n- Global npm package (if successful)\n\n## How to use Neo-Clone:\n\n### Option 1: From Neo-Clone directory (Recommended)\n```bash\ncd {neo_clone_dir}\nopencode\n# Select "NEO-CLONE-AGENT" from the agent list\n```\n\n### Option 2: From any workspace\n```bash\n# Clone Neo-Clone if you haven't already\ngit clone <neo-clone-repo-url>\ncd neo-clone\nopencode\n# Select "NEO-CLONE-AGENT"\n```\n\n### Option 3: Install globally (if npm install succeeded)\n```bash\n# The agent should now be available in any OpenCode workspace\nopencode\n# Look for "NEO-CLONE-AGENT" in agent selection\n```\n\n## Features Available:\n✅ MiniMax reasoning engine\n✅ 8+ integrated skills\n✅ Persistent memory\n✅ Model switching (/model command)\n✅ Autonomous error healing\n✅ Emoji-safe processing\n✅ Multi-workspace support\n\n## Troubleshooting:\nIf Neo-Clone agent doesn't appear:\n1. Ensure you're running OpenCode from the Neo-Clone directory\n2. Check that brain_opencode.py exists\n3. Verify Python dependencies are installed\n4. Try restarting OpenCode\n\n## Next Steps:\n1. Run 'opencode' from this directory\n2. Select "NEO-CLONE-AGENT" \n3. Start using Neo-Clone's enhanced capabilities!\n"""
+    with open(neo_clone_dir / 'AGENT_INSTALLATION.md', 'w') as f:
+        f.write(instructions)
+    print('✅ Created installation instructions')
+    print(f"\n📖 See: {neo_clone_dir / 'AGENT_INSTALLATION.md'}")
+    return True
+
+def verify_setup():
+    """Verify the setup was successful"""
+    print('\n🔍 VERIFYING SETUP')
+    print('-' * 30)
+    neo_clone_dir = Path.cwd()
+    required_files = ['brain_opencode.py', 'neo-clone-agent/package.json', 'neo-clone-agent/neo-clone.md', '.opencode/agent/neo-clone.md']
+    all_good = True
+    for file_path in required_files:
+        full_path = neo_clone_dir / file_path
+        if full_path.exists():
+            print(f'✅ {file_path}')
+        else:
+            print(f'❌ {file_path} - MISSING')
+            all_good = False
+    if all_good:
+        print('\n🎉 SETUP VERIFICATION SUCCESSFUL!')
+        print("You can now run 'opencode' and select 'NEO-CLONE-AGENT'")
+    else:
+        print('\n⚠️ SETUP INCOMPLETE - Some files are missing')
+    return all_good
+if __name__ == '__main__':
+    success = setup_neo_clone_agent()
+    if success:
+        verify_setup()
+        print(f'\n🚀 NEXT STEPS:')
+        print(f'1. Run: opencode')
+        print(f'2. Select: NEO-CLONE-AGENT')
+        print(f'3. Start using Neo-Clone!')
+    else:
+        print(f'\n❌ SETUP FAILED')
+        print(f'Please check the error messages above and try again.')

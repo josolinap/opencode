@@ -1,0 +1,144 @@
+import os
+import sys
+import logging
+import importlib.util
+import traceback
+from pprint import pprint
+from functools import lru_cache
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+ROOT = '/app/neo_tui_assistant_1544/neo-clone'
+SKILLS_INIT = os.path.join(ROOT, 'skills', '__init__.py')
+
+def safe_load_module_from_path(module_name: str, path: str):
+    """
+    Load module from a specific file path under the given module_name.
+    Returns the loaded module object.
+    """
+    try:
+        logging.info(f'Loading module from path: {path} as name: {module_name}')
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if spec is None:
+            raise ImportError(f'Could not create spec for {path}')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        loader = spec.loader
+        if loader is None:
+            raise ImportError(f'No loader for spec {spec} (path={path})')
+        loader.exec_module(module)
+        logging.info(f"Module {module_name} loaded successfully (file: {getattr(module, '__file__', None)})")
+        return module
+    except Exception as e:
+        logging.error(f'Failed to load module from path {path}: {e}')
+        traceback.print_exc()
+        raise
+
+@lru_cache(maxsize=128)
+def discover_and_run(module):
+    """
+    Try multiple discovery invocation patterns and attempt to run smoke tests:
+    - If module has discover_skills(registry) call it
+    - If module has discover_skills() call it
+    - If module exposes DEFAULT_REGISTRY or registry, use it
+    - Else try to inspect globals for SkillRegistry or BaseSkill-derived objects
+    After discovery, list skills and call execute_skill(name, {}) if available.
+    """
+    try:
+        logging.info('Inspecting loaded skills module members...')
+        members = sorted((k for k in dir(module) if not k.startswith('_')))
+        logging.info('Members found: ' + ', '.join(members))
+        registry = None
+        if hasattr(module, 'DEFAULT_REGISTRY'):
+            registry = getattr(module, 'DEFAULT_REGISTRY')
+            logging.info('Found DEFAULT_REGISTRY on module.')
+        elif hasattr(module, 'registry'):
+            registry = getattr(module, 'registry')
+            logging.info('Found registry on module.')
+        else:
+            for name in ('SkillRegistry',):
+                if hasattr(module, name):
+                    candidate = getattr(module, name)
+                    logging.info(f'Found attribute {name} in module (likely class): {candidate}')
+        if hasattr(module, 'discover_skills'):
+            func = getattr(module, 'discover_skills')
+            try:
+                logging.info('Calling discover_skills with registry (if supported)...')
+                if registry is not None:
+                    res = func(registry)
+                else:
+                    res = func()
+                logging.info('discover_skills executed, return value: %s', str(res))
+            except TypeError:
+                logging.info('discover_skills did not accept registry parameter, calling without args...')
+                res = func()
+                logging.info('discover_skills executed without args, return: %s', str(res))
+        else:
+            logging.info('Module has no discover_skills function; attempting to call register functions for individual skill modules if present.')
+        if registry is None:
+            for attr in ('DEFAULT_REGISTRY', 'registry', 'skill_registry', 'SKILL_REGISTRY'):
+                if hasattr(module, attr):
+                    registry = getattr(module, attr)
+                    logging.info(f'Located registry via attribute: {attr}')
+                    break
+        if registry is None:
+            for (vname, val) in vars(module).items():
+                if hasattr(val, 'list_skills') and hasattr(val, 'execute_skill'):
+                    registry = val
+                    logging.info(f'Found registry-like object in module: {vname}')
+                    break
+        if registry is None:
+            logging.warning('No registry object discovered. Attempting to import individual skill modules from skills/ directory.')
+            skills_dir = os.path.join(ROOT, 'skills')
+            for fname in os.listdir(skills_dir):
+                if fname.endswith('.py') and fname != '__init__.py':
+                    fpath = os.path.join(skills_dir, fname)
+                    modname = f'neo_clone_skill_{os.path.splitext(fname)[0]}'
+                    try:
+                        safe_load_module_from_path(modname, fpath)
+                    except Exception as e:
+                        logging.error(f'Failed to load skill module {fpath}: {e}')
+            logging.info('Loaded individual skill modules. They may register themselves into a registry on import.')
+            for attr in ('DEFAULT_REGISTRY', 'registry', 'skill_registry', 'SKILL_REGISTRY'):
+                if hasattr(module, attr):
+                    registry = getattr(module, attr)
+                    logging.info(f'Located registry via attribute after importing skill modules: {attr}')
+                    break
+        if registry is not None:
+            logging.info('Registry found. Listing skills...')
+            try:
+                skills = registry.list_skills()
+                logging.info('Registered skills: %s', skills)
+                for s in skills:
+                    logging.info('Running smoke execute for skill: %s', s)
+                    try:
+                        out = registry.execute_skill(s, {})
+                        logging.info('Result from %s: %s', s, repr(out))
+                    except Exception as e:
+                        logging.error('Error executing skill %s: %s', s, e)
+                        traceback.print_exc()
+            except Exception as e:
+                logging.error('Error while interacting with registry: %s', e)
+                traceback.print_exc()
+        else:
+            logging.error('Unable to find or build a SkillRegistry. Manual inspection required.')
+    except Exception as e:
+        logging.error('discover_and_run encountered an error: %s', e)
+        traceback.print_exc()
+        raise
+
+def main():
+    try:
+        if not os.path.exists(SKILLS_INIT):
+            logging.error('Skills __init__.py not found at expected path: %s', SKILLS_INIT)
+            sys.exit(2)
+        module_name = 'neo_clone_skills_forced'
+        module = safe_load_module_from_path(module_name, SKILLS_INIT)
+        related = [k for k in sys.modules.keys() if k == 'skills' or k.startswith('skills.') or k.startswith('neo_clone_skills')]
+        logging.info('Relevant sys.modules entries after load: %s', related)
+        discover_and_run(module)
+        logging.info('run_skills_by_path completed.')
+    except Exception as e:
+        logging.error('Fatal error in run_skills_by_path: %s', e)
+        traceback.print_exc()
+        sys.exit(1)
+if __name__ == '__main__':
+    main()

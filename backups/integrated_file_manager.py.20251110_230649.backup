@@ -1,0 +1,535 @@
+from functools import lru_cache
+'\nNeo-Clone Integrated File Manager\nAdvanced file management with built-in editor and Git integration\n'
+import os
+import subprocess
+import json
+import time
+import asyncio
+from typing import Dict, List, Any, Optional, Tuple, Union
+from dataclasses import dataclass, asdict
+from datetime import datetime
+from pathlib import Path
+import difflib
+import shutil
+from collections import defaultdict
+
+@dataclass
+class FileOperation:
+    """File operation record"""
+    operation: str
+    file_path: str
+    timestamp: datetime
+    success: bool
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {**asdict(self), 'timestamp': self.timestamp.isoformat()}
+
+@dataclass
+class FileInfo:
+    """File information structure"""
+    path: str
+    name: str
+    size: int
+    modified_time: datetime
+    is_directory: bool
+    is_file: bool
+    extension: Optional[str] = None
+    content_preview: Optional[str] = None
+    line_count: Optional[int] = None
+    encoding: str = 'utf-8'
+
+    @classmethod
+    def from_path(cls, file_path: Path) -> 'FileInfo':
+        """Create FileInfo from Path"""
+        stat = file_path.stat()
+        return cls(path=str(file_path), name=file_path.name, size=stat.st_size, modified_time=datetime.fromtimestamp(stat.st_mtime), is_directory=file_path.is_dir(), is_file=file_path.is_file(), extension=file_path.suffix.lower() if file_path.is_file() else None)
+
+class FileEditor:
+    """Built-in file editor with syntax highlighting support"""
+
+    def __init__(self):
+        self.current_file: Optional[str] = None
+        self.current_content: Optional[str] = None
+        self.edit_history: List[Tuple[str, str, datetime]] = []
+        self.syntax_extensions = {'.py': 'python', '.js': 'javascript', '.ts': 'typescript', '.html': 'html', '.css': 'css', '.json': 'json', '.xml': 'xml', '.sql': 'sql', '.md': 'markdown', '.yaml': 'yaml', '.yml': 'yaml', '.sh': 'bash', '.bat': 'batch', '.txt': 'text'}
+
+    def open_file(self, file_path: str) -> Tuple[bool, str]:
+        """Open file for editing"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                return (False, f'File not found: {file_path}')
+            if not path.is_file():
+                return (False, f'Path is not a file: {file_path}')
+            encoding = self._detect_encoding(path)
+            with open(path, 'r', encoding=encoding) as f:
+                content = f.read()
+            self.current_file = file_path
+            self.current_content = content
+            return (True, f'Opened {file_path} ({len(content)} characters, {content.count(chr(10)) + 1} lines)')
+        except Exception as e:
+            return (False, f'Error opening file: {str(e)}')
+
+    @lru_cache(maxsize=128)
+    def save_file(self, content: Optional[str]=None) -> Tuple[bool, str]:
+        """Save current file"""
+        if not self.current_file:
+            return (False, 'No file is currently open')
+        try:
+            content_to_save = content if content is not None else self.current_content
+            if self.current_content != content_to_save:
+                self.edit_history.append((self.current_content or '', content_to_save, datetime.now()))
+            with open(self.current_file, 'w', encoding='utf-8') as f:
+                f.write(content_to_save)
+            self.current_content = content_to_save
+            return (True, f'Saved {self.current_file}')
+        except Exception as e:
+            return (False, f'Error saving file: {str(e)}')
+
+    def create_file(self, file_path: str, content: str='') -> Tuple[bool, str]:
+        """Create new file"""
+        try:
+            path = Path(file_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            self.current_file = file_path
+            self.current_content = content
+            return (True, f'Created {file_path}')
+        except Exception as e:
+            return (False, f'Error creating file: {str(e)}')
+
+    def get_syntax_language(self) -> str:
+        """Get syntax highlighting language for current file"""
+        if not self.current_file:
+            return 'text'
+        path = Path(self.current_file)
+        extension = path.suffix.lower()
+        return self.syntax_extensions.get(extension, 'text')
+
+    def get_diff(self, old_content: str, new_content: str) -> str:
+        """Get diff between two content versions"""
+        diff = difflib.unified_diff(old_content.splitlines(keepends=True), new_content.splitlines(keepends=True), fromfile='original', tofile='modified', lineterm='')
+        return ''.join(diff)
+
+    def get_edit_history(self) -> List[Dict[str, Any]]:
+        """Get edit history"""
+        return [{'timestamp': timestamp.isoformat(), 'old_length': len(old_content), 'new_length': len(new_content), 'diff': self.get_diff(old_content, new_content)[:500] + '...' if len(self.get_diff(old_content, new_content)) > 500 else self.get_diff(old_content, new_content)} for (old_content, new_content, timestamp) in self.edit_history]
+
+    def _detect_encoding(self, file_path: Path) -> str:
+        """Detect file encoding"""
+        try:
+            import chardet
+            with open(file_path, 'rb') as f:
+                raw_data = f.read(10000)
+                result = chardet.detect(raw_data)
+                return result['encoding'] or 'utf-8'
+        except ImportError:
+            return 'utf-8'
+        except Exception:
+            return 'utf-8'
+
+class GitManager:
+    """Git integration for version control"""
+
+    def __init__(self, repo_path: str='.'):
+        self.repo_path = Path(repo_path).resolve()
+        self.is_git_repo = self._check_git_repo()
+
+    def _check_git_repo(self) -> bool:
+        """Check if current directory is a git repository"""
+        git_dir = self.repo_path / '.git'
+        return git_dir.exists() and git_dir.is_dir()
+
+    def init_repo(self) -> Tuple[bool, str]:
+        """Initialize git repository"""
+        try:
+            if self.is_git_repo:
+                return (True, 'Repository already initialized')
+            result = subprocess.run(['git', 'init'], cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                self.is_git_repo = True
+                return (True, 'Git repository initialized successfully')
+            else:
+                return (False, f'Failed to initialize git repo: {result.stderr}')
+        except subprocess.TimeoutExpired:
+            return (False, 'Git init timed out')
+        except Exception as e:
+            return (False, f'Error initializing git repo: {str(e)}')
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get git status"""
+        if not self.is_git_repo:
+            return {'error': 'Not a git repository'}
+        try:
+            result = subprocess.run(['git', 'status', '--porcelain'], cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                return {'error': f'Git status failed: {result.stderr}'}
+            modified_files = []
+            untracked_files = []
+            staged_files = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    status = line[:2]
+                    file_path = line[3:]
+                    if status == '??':
+                        untracked_files.append(file_path)
+                    elif status[0] in ['M', 'A', 'D', 'R', 'C']:
+                        staged_files.append(file_path)
+                    elif status[1] in ['M']:
+                        modified_files.append(file_path)
+            branch_result = subprocess.run(['git', 'branch', '--show-current'], cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else 'unknown'
+            return {'current_branch': current_branch, 'modified_files': modified_files, 'untracked_files': untracked_files, 'staged_files': staged_files, 'is_clean': len(modified_files) == 0 and len(untracked_files) == 0}
+        except subprocess.TimeoutExpired:
+            return {'error': 'Git status timed out'}
+        except Exception as e:
+            return {'error': f'Error getting git status: {str(e)}'}
+
+    def add_files(self, file_paths: List[str]) -> Tuple[bool, str]:
+        """Add files to staging area"""
+        if not self.is_git_repo:
+            return (False, 'Not a git repository')
+        try:
+            result = subprocess.run(['git', 'add'] + file_paths, cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return (True, f'Added {len(file_paths)} file(s) to staging area')
+            else:
+                return (False, f'Failed to add files: {result.stderr}')
+        except subprocess.TimeoutExpired:
+            return (False, 'Git add timed out')
+        except Exception as e:
+            return (False, f'Error adding files: {str(e)}')
+
+    def commit(self, message: str) -> Tuple[bool, str]:
+        """Create commit"""
+        if not self.is_git_repo:
+            return (False, 'Not a git repository')
+        try:
+            result = subprocess.run(['git', 'commit', '-m', message], cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return (True, f'Committed changes: {message}')
+            else:
+                return (False, f'Failed to commit: {result.stderr}')
+        except subprocess.TimeoutExpired:
+            return (False, 'Git commit timed out')
+        except Exception as e:
+            return (False, f'Error committing: {str(e)}')
+
+    def get_log(self, limit: int=10) -> List[Dict[str, Any]]:
+        """Get commit history"""
+        if not self.is_git_repo:
+            return []
+        try:
+            result = subprocess.run(['git', 'log', '--oneline', '-n', str(limit)], cwd=self.repo_path, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                return []
+            commits = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split(' ', 1)
+                    if len(parts) == 2:
+                        commit_hash = parts[0]
+                        commit_message = parts[1]
+                        commits.append({'hash': commit_hash, 'message': commit_message})
+            return commits
+        except subprocess.TimeoutExpired:
+            return []
+        except Exception as e:
+            return []
+
+class IntegratedFileManager:
+    """Main integrated file manager with editor and Git support"""
+
+    def __init__(self, workspace_path: str='.'):
+        self.workspace_path = Path(workspace_path).resolve()
+        self.editor = FileEditor()
+        self.git_manager = GitManager(str(self.workspace_path))
+        self.operation_history: List[FileOperation] = []
+        self.bookmarks: Dict[str, str] = {}
+        self.workspace_path.mkdir(parents=True, exist_ok=True)
+
+    def _record_operation(self, operation: str, file_path: str, success: bool, error_message: Optional[str]=None, metadata: Optional[Dict[str, Any]]=None):
+        """Record file operation"""
+        op = FileOperation(operation=operation, file_path=file_path, timestamp=datetime.now(), success=success, error_message=error_message, metadata=metadata or {})
+        self.operation_history.append(op)
+        if len(self.operation_history) > 1000:
+            self.operation_history = self.operation_history[-1000:]
+
+    def list_directory(self, path: str='.', show_hidden: bool=False) -> Tuple[bool, Union[List[FileInfo], str]]:
+        """List directory contents"""
+        try:
+            dir_path = self.workspace_path / path
+            if not dir_path.exists():
+                return (False, f'Directory not found: {path}')
+            if not dir_path.is_dir():
+                return (False, f'Path is not a directory: {path}')
+            items = []
+            for item in dir_path.iterdir():
+                if not show_hidden and item.name.startswith('.'):
+                    continue
+                file_info = FileInfo.from_path(item)
+                if file_info.is_file and file_info.size < 10240:
+                    try:
+                        with open(item, 'r', encoding='utf-8', errors='ignore') as f:
+                            preview = f.read(200)
+                            file_info.content_preview = preview
+                            file_info.line_count = preview.count('\n') + 1
+                    except Exception:
+                        pass
+                items.append(file_info)
+            items.sort(key=lambda x: (not x.is_directory, x.name.lower()))
+            return (True, items)
+        except Exception as e:
+            return (False, f'Error listing directory: {str(e)}')
+
+    def create_file(self, file_path: str, content: str='') -> Tuple[bool, str]:
+        """Create new file"""
+        try:
+            full_path = self.workspace_path / file_path
+            (success, message) = self.editor.create_file(str(full_path), content)
+            self._record_operation('create', file_path, success, None if success else message)
+            return (success, message)
+        except Exception as e:
+            error_msg = f'Error creating file: {str(e)}'
+            self._record_operation('create', file_path, False, error_msg)
+            return (False, error_msg)
+
+    def open_file(self, file_path: str) -> Tuple[bool, str]:
+        """Open file in editor"""
+        try:
+            full_path = self.workspace_path / file_path
+            (success, message) = self.editor.open_file(str(full_path))
+            self._record_operation('read', file_path, success, None if success else message)
+            return (success, message)
+        except Exception as e:
+            error_msg = f'Error opening file: {str(e)}'
+            self._record_operation('read', file_path, False, error_msg)
+            return (False, error_msg)
+
+    def save_file(self, content: Optional[str]=None) -> Tuple[bool, str]:
+        """Save current file"""
+        try:
+            if not self.editor.current_file:
+                return (False, 'No file is currently open')
+            (success, message) = self.editor.save_file(content)
+            self._record_operation('update', self.editor.current_file, success, None if success else message)
+            return (success, message)
+        except Exception as e:
+            error_msg = f'Error saving file: {str(e)}'
+            if self.editor.current_file:
+                self._record_operation('update', self.editor.current_file, False, error_msg)
+            return (False, error_msg)
+
+    def delete_file(self, file_path: str) -> Tuple[bool, str]:
+        """Delete file or directory"""
+        try:
+            full_path = self.workspace_path / file_path
+            if not full_path.exists():
+                return (False, f'File not found: {file_path}')
+            if full_path.is_dir():
+                shutil.rmtree(full_path)
+            else:
+                full_path.unlink()
+            self._record_operation('delete', file_path, True)
+            if self.editor.current_file == str(full_path):
+                self.editor.current_file = None
+                self.editor.current_content = None
+            return (True, f'Deleted {file_path}')
+        except Exception as e:
+            error_msg = f'Error deleting file: {str(e)}'
+            self._record_operation('delete', file_path, False, error_msg)
+            return (False, error_msg)
+
+    def move_file(self, source: str, destination: str) -> Tuple[bool, str]:
+        """Move/rename file"""
+        try:
+            source_path = self.workspace_path / source
+            dest_path = self.workspace_path / destination
+            if not source_path.exists():
+                return (False, f'Source file not found: {source}')
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source_path), str(dest_path))
+            self._record_operation('move', f'{source} -> {destination}', True)
+            if self.editor.current_file == str(source_path):
+                self.editor.current_file = str(dest_path)
+            return (True, f'Moved {source} to {destination}')
+        except Exception as e:
+            error_msg = f'Error moving file: {str(e)}'
+            self._record_operation('move', f'{source} -> {destination}', False, error_msg)
+            return (False, error_msg)
+
+    def copy_file(self, source: str, destination: str) -> Tuple[bool, str]:
+        """Copy file"""
+        try:
+            source_path = self.workspace_path / source
+            dest_path = self.workspace_path / destination
+            if not source_path.exists():
+                return (False, f'Source file not found: {source}')
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            if source_path.is_dir():
+                shutil.copytree(str(source_path), str(dest_path))
+            else:
+                shutil.copy2(str(source_path), str(dest_path))
+            self._record_operation('copy', f'{source} -> {destination}', True)
+            return (True, f'Copied {source} to {destination}')
+        except Exception as e:
+            error_msg = f'Error copying file: {str(e)}'
+            self._record_operation('copy', f'{source} -> {destination}', False, error_msg)
+            return (False, error_msg)
+
+    def add_bookmark(self, name: str, path: str) -> Tuple[bool, str]:
+        """Add bookmark"""
+        try:
+            full_path = self.workspace_path / path
+            if not full_path.exists():
+                return (False, f'Path not found: {path}')
+            self.bookmarks[name] = path
+            return (True, f"Added bookmark '{name}' for {path}")
+        except Exception as e:
+            return (False, f'Error adding bookmark: {str(e)}')
+
+    def get_bookmarks(self) -> Dict[str, str]:
+        """Get all bookmarks"""
+        return self.bookmarks.copy()
+
+    def search_files(self, pattern: str, search_content: bool=False, max_results: int=50) -> List[Dict[str, Any]]:
+        """Search for files by name or content"""
+        results = []
+        try:
+            for item in self.workspace_path.rglob('*'):
+                if len(results) >= max_results:
+                    break
+                if any((part.startswith('.') for part in item.parts)):
+                    continue
+                if pattern.lower() in item.name.lower():
+                    result = {'path': str(item.relative_to(self.workspace_path)), 'name': item.name, 'type': 'directory' if item.is_dir() else 'file', 'match_type': 'filename'}
+                    if item.is_file():
+                        stat = item.stat()
+                        result['size'] = stat.st_size
+                        result['modified'] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    results.append(result)
+                    continue
+                if search_content and item.is_file() and (item.stat().st_size < 102400):
+                    try:
+                        with open(item, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                            if pattern.lower() in content.lower():
+                                lines = content.split('\n')
+                                matching_lines = []
+                                for (i, line) in enumerate(lines, 1):
+                                    if pattern.lower() in line.lower():
+                                        matching_lines.append(i)
+                                        if len(matching_lines) >= 3:
+                                            break
+                                results.append({'path': str(item.relative_to(self.workspace_path)), 'name': item.name, 'type': 'file', 'match_type': 'content', 'matching_lines': matching_lines, 'size': item.stat().st_size, 'modified': datetime.fromtimestamp(item.stat().st_mtime).isoformat()})
+                    except Exception:
+                        pass
+        except Exception as e:
+            pass
+        return results
+
+    def get_file_stats(self) -> Dict[str, Any]:
+        """Get workspace statistics"""
+        try:
+            total_files = 0
+            total_dirs = 0
+            total_size = 0
+            file_types = defaultdict(int)
+            for item in self.workspace_path.rglob('*'):
+                if any((part.startswith('.') for part in item.parts)):
+                    continue
+                if item.is_dir():
+                    total_dirs += 1
+                else:
+                    total_files += 1
+                    size = item.stat().st_size
+                    total_size += size
+                    extension = item.suffix.lower()
+                    if extension:
+                        file_types[extension] += 1
+            return {'total_files': total_files, 'total_directories': total_dirs, 'total_size_bytes': total_size, 'total_size_mb': round(total_size / (1024 * 1024), 2), 'file_types': dict(file_types), 'workspace_path': str(self.workspace_path), 'git_enabled': self.git_manager.is_git_repo, 'bookmarks_count': len(self.bookmarks), 'operation_history_count': len(self.operation_history)}
+        except Exception as e:
+            return {'error': str(e)}
+
+    def get_operation_history(self, limit: int=50) -> List[Dict[str, Any]]:
+        """Get recent file operations"""
+        return [{**op.to_dict(), 'time_ago': self._format_time_ago(op.timestamp)} for op in self.operation_history[-limit:]]
+
+    def _format_time_ago(self, timestamp: datetime) -> str:
+        """Format timestamp as time ago"""
+        now = datetime.now()
+        diff = now - timestamp
+        if diff.seconds < 60:
+            return f'{diff.seconds} seconds ago'
+        elif diff.seconds < 3600:
+            return f'{diff.seconds // 60} minutes ago'
+        elif diff.days == 0:
+            return f'{diff.seconds // 3600} hours ago'
+        elif diff.days < 30:
+            return f'{diff.days} days ago'
+        else:
+            return timestamp.strftime('%Y-%m-%d')
+
+async def main():
+    """Test the integrated file manager"""
+    print('Neo-Clone Integrated File Manager Test')
+    print('=' * 50)
+    fm = IntegratedFileManager('./test_workspace')
+    print(f'Workspace: {fm.workspace_path}')
+    (success, message) = fm.create_file('test.py', "print('Hello, Neo-Clone!')\n")
+    print(f'Create file: {success} - {message}')
+    (success, result) = fm.list_directory('.')
+    if success:
+        print(f'Directory contents ({len(result)} items):')
+        for item in result[:5]:
+            type_icon = '📁' if item.is_directory else '📄'
+            size_info = f' ({item.size} bytes)' if item.is_file else ''
+            print(f'  {type_icon} {item.name}{size_info}')
+    else:
+        print(f'List directory error: {result}')
+    (success, message) = fm.open_file('test.py')
+    print(f'Open file: {success} - {message}')
+    if success:
+        print(f'Current file: {fm.editor.current_file}')
+        print(f'Syntax language: {fm.editor.get_syntax_language()}')
+        print(f'Content preview: {fm.editor.current_content[:50]}...')
+    print(f'\nGit repository: {fm.git_manager.is_git_repo}')
+    if not fm.git_manager.is_git_repo:
+        (success, message) = fm.git_manager.init_repo()
+        print(f'Init git: {success} - {message}')
+    status = fm.git_manager.get_status()
+    if 'error' not in status:
+        print(f"Git status: Branch '{status['current_branch']}', Clean: {status['is_clean']}")
+        if status['untracked_files']:
+            print(f"  Untracked: {status['untracked_files']}")
+    search_results = fm.search_files('test', search_content=True)
+    print(f"Search results for 'test': {len(search_results)} items")
+    for result in search_results[:3]:
+        match_info = f" (lines: {result.get('matching_lines', [])})" if result.get('matching_lines') else ''
+        print(f"  {result['path']}{match_info}")
+    (success, message) = fm.add_bookmark('test_file', 'test.py')
+    print(f'Add bookmark: {success} - {message}')
+    bookmarks = fm.get_bookmarks()
+    print(f'Bookmarks: {bookmarks}')
+    stats = fm.get_file_stats()
+    print(f'\nWorkspace statistics:')
+    print(f"  Files: {stats.get('total_files', 0)}")
+    print(f"  Directories: {stats.get('total_directories', 0)}")
+    print(f"  Total size: {stats.get('total_size_mb', 0)} MB")
+    print(f"  Git enabled: {stats.get('git_enabled', False)}")
+    history = fm.get_operation_history(5)
+    print(f'\nRecent operations:')
+    for op in history:
+        status = '✅' if op['success'] else '❌'
+        print(f"  {status} {op['operation']} {op['file_path']} ({op['time_ago']})")
+    try:
+        import shutil
+        shutil.rmtree('./test_workspace')
+        print('\n✅ Test workspace cleaned up')
+    except Exception as e:
+        print(f'\n⚠️ Cleanup failed: {e}')
+if __name__ == '__main__':
+    asyncio.run(main())

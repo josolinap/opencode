@@ -1,0 +1,150 @@
+from functools import lru_cache
+'\nNeo-Clone Setup Script\nAutomated installation and configuration of Neo-Clone AI Assistant\n'
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+
+class NeoCloneInstaller:
+
+    def __init__(self):
+        self.project_root = Path(__file__).parent
+        self.python_cmd = sys.executable
+
+    def print_header(self):
+        print('=' * 60)
+        print('Neo-Clone AI Assistant Setup')
+        print('=' * 60)
+        print()
+
+    def check_python_version(self):
+        """Check if Python version is compatible"""
+        print('Checking Python version...')
+        version = sys.version_info
+        if version.major < 3 or (version.major == 3 and version.minor < 8):
+            print('ERROR: Python 3.8+ required. Current version:', sys.version)
+            return False
+        print(f'SUCCESS: Python {version.major}.{version.minor}.{version.micro} detected')
+        return True
+
+    def check_dependencies(self):
+        """Check for optional dependencies and offer to install"""
+        print('\nChecking optional dependencies...')
+        optional_deps = {'psutil': 'system monitoring', 'rich': 'enhanced terminal UI'}
+        missing = []
+        for (dep, purpose) in optional_deps.items():
+            try:
+                __import__(dep)
+                print(f'OK: {dep} available ({purpose})')
+            except ImportError:
+                print(f'WARN: {dep} missing ({purpose}) - will use fallback')
+                missing.append(dep)
+        if missing:
+            print(f"\nOptional dependencies missing: {', '.join(missing)}")
+            print('Neo-Clone will work with fallbacks, but enhanced features will be limited.')
+            install = input('Install missing dependencies? (y/N): ').lower().strip()
+            if install == 'y':
+                self.install_dependencies(missing)
+        return True
+
+    def install_dependencies(self, deps):
+        """Install missing dependencies"""
+        print(f"\nInstalling dependencies: {', '.join(deps)}")
+        try:
+            subprocess.check_call([self.python_cmd, '-m', 'pip', 'install'] + deps)
+            print('SUCCESS: Dependencies installed successfully')
+        except subprocess.CalledProcessError:
+            print('WARN: Failed to install some dependencies. Continuing with fallbacks.')
+
+    def run_tests(self):
+        """Run the comprehensive test suite"""
+        print('\nRunning Neo-Clone test suite...')
+        test_file = self.project_root / 'test_neo_clone_complete.py'
+        if not test_file.exists():
+            print('ERROR: Test file not found. Please ensure all files are present.')
+            return False
+        try:
+            result = subprocess.run([self.python_cmd, str(test_file)], capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print('SUCCESS: All tests passed! Neo-Clone is ready to use.')
+                return True
+            else:
+                print('ERROR: Some tests failed:')
+                print(result.stdout)
+                print(result.stderr)
+                return False
+        except subprocess.TimeoutExpired:
+            print('ERROR: Tests timed out. This may indicate performance issues.')
+            return False
+        except Exception as e:
+            print(f'ERROR: Error running tests: {e}')
+            return False
+
+    def create_launch_script(self):
+        """Create a convenient launch script"""
+        print('\nCreating launch script...')
+        script_content = f'#!/usr/bin/env python3\n"""\nNeo-Clone Launch Script\n"""\nimport sys\nimport os\n\n# Add current directory to path\nsys.path.insert(0, os.path.dirname(__file__))\n\nfrom neo_clone_tui_enhanced import NeoCloneTUI\n\nif __name__ == "__main__":\n    app = NeoCloneTUI()\n    app.run()\n'
+        script_path = self.project_root / 'neo_clone.py'
+        try:
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            if os.name != 'nt':
+                os.chmod(script_path, 493)
+            print(f'SUCCESS: Launch script created: {script_path}')
+            print('   Run with: python neo_clone.py')
+        except Exception as e:
+            print(f'WARN: Failed to create launch script: {e}')
+
+    def create_config_file(self):
+        """Create a basic configuration file"""
+        print('Creating configuration file...')
+        config_content = '# Neo-Clone Configuration\n# This file contains default settings for Neo-Clone\n\n[general]\n# Default model for code generation\ndefault_model = opencode/big-pickle\n\n# Cache settings\ncache_enabled = true\nmax_cache_size = 100\n\n# UI settings\ntheme = dark\nshow_performance_metrics = true\n\n[skills]\n# Enable/disable specific skills\ncode_generation = true\ntext_analysis = true\ndata_inspector = true\nsystem_monitor = true\nautonomous_code_review = true\n\n[logging]\n# Logging configuration\nlevel = INFO\nfile = neo_clone.log\n'
+        config_path = self.project_root / 'neo_clone_config.ini'
+        try:
+            with open(config_path, 'w') as f:
+                f.write(config_content)
+            print(f'SUCCESS: Configuration file created: {config_path}')
+        except Exception as e:
+            print(f'WARN: Failed to create config file: {e}')
+
+    def show_usage_instructions(self):
+        """Display usage instructions"""
+        print('\n' + '=' * 60)
+        print('Neo-Clone Setup Complete!')
+        print('=' * 60)
+        print()
+        print('Quick Start:')
+        print('1. Launch Neo-Clone: python neo_clone.py')
+        print('2. Or run TUI directly: python neo_clone_tui_enhanced.py')
+        print('3. Run tests anytime: python test_neo_clone_complete.py')
+        print()
+        print('Available Skills:')
+        skills = ['code_generation - Multi-language code generation', 'text_analysis - Sentiment analysis and NLP', 'data_inspector - Statistical data analysis', 'autonomous_code_review - Code quality assessment', 'system_monitor - Real-time health monitoring', 'autonomous_reasoning_skill - Workflow optimization']
+        for skill in skills:
+            print(f'  • {skill}')
+        print()
+        print('Documentation: NEO_CLONE_DOCUMENTATION.md')
+        print('Configuration: neo_clone_config.ini')
+        print()
+        print('Happy coding with Neo-Clone!')
+
+    def run(self):
+        """Main installation process"""
+        self.print_header()
+        if not self.check_python_version():
+            sys.exit(1)
+        if not self.check_dependencies():
+            sys.exit(1)
+        if not self.run_tests():
+            print('\nWARN: Tests failed, but installation will continue.')
+            print('   You may experience issues. Check NEO_CLONE_DOCUMENTATION.md for troubleshooting.')
+        self.create_launch_script()
+        self.create_config_file()
+        self.show_usage_instructions()
+
+def main():
+    installer = NeoCloneInstaller()
+    installer.run()
+if __name__ == '__main__':
+    main()

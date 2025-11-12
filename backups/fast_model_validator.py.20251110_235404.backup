@@ -1,0 +1,105 @@
+from functools import lru_cache
+'\nfast_model_validator.py - Quick validation of Opencode models\n\nThis script focuses on validating just the Opencode models that we know work,\nproviding a fast way to get a working model list.\n'
+import logging
+import time
+import json
+from typing import List, Dict, Any
+from llm_client_opencode import OpencodeLLMClient
+from config_opencode import load_config
+logger = logging.getLogger(__name__)
+
+class FastModelValidator:
+    """Fast validation focusing on Opencode models"""
+
+    def __init__(self):
+        self.config = load_config()
+        self.llm_client = OpencodeLLMClient(self.config)
+
+    @lru_cache(maxsize=128)
+    def validate_opencode_models(self) -> Dict[str, Any]:
+        """Quick validation of Opencode models"""
+        print('FAST OPENCODE MODEL VALIDATION')
+        print('=' * 50)
+        opencode_models = ['opencode/big-pickle', 'opencode/grok-code']
+        promising_models = ['huggingface/mistral-7b-instruct', 'huggingface/llama-2-7b-chat', 'api/gpt-4o-mini', 'api/claude-3-haiku']
+        all_models = opencode_models + promising_models
+        print(f'Testing {len(all_models)} priority models...')
+        working_models = []
+        failed_models = []
+        results = []
+        for (i, model) in enumerate(all_models, 1):
+            print(f'\n[{i}/{len(all_models)}] Testing: {model}')
+            try:
+                self.llm_client.set_model(model)
+                start_time = time.time()
+                response = self.llm_client.chat([{'role': 'user', 'content': 'What is 2+2? Answer with just the number.'}])
+                response_time = time.time() - start_time
+                if response and hasattr(response, 'content') and response.content and (not response.content.startswith('[')) and (len(response.content.strip()) > 0):
+                    working_models.append(model)
+                    quality = self._assess_quality(response.content, 'math')
+                    print(f'   WORKING - {response_time:.2f}s - Quality: {quality:.2f}')
+                    print(f'   Response: {response.content[:50]}...')
+                    results.append({'name': model, 'working': True, 'response_time': response_time, 'quality': quality, 'response': response.content[:100]})
+                else:
+                    failed_models.append(model)
+                    content = getattr(response, 'content', str(response))
+                    print(f'   FAILED - Invalid response: {content[:50]}...')
+                    results.append({'name': model, 'working': False, 'error': content[:100]})
+            except Exception as e:
+                failed_models.append(model)
+                print(f'   FAILED - Error: {str(e)[:50]}...')
+                results.append({'name': model, 'working': False, 'error': str(e)})
+        summary = {'total_tested': len(all_models), 'working_models': working_models, 'failed_models': failed_models, 'working_count': len(working_models), 'failed_count': len(failed_models), 'success_rate': len(working_models) / len(all_models) * 100, 'results': results}
+        print('\n' + '=' * 50)
+        print('FAST VALIDATION RESULTS')
+        print('=' * 50)
+        print(f"Total Tested: {summary['total_tested']}")
+        print(f"Working: {summary['working_count']}")
+        print(f"Failed: {summary['failed_count']}")
+        print(f"Success Rate: {summary['success_rate']:.1f}%")
+        if working_models:
+            print(f'\nWORKING MODELS ({len(working_models)}):')
+            print('-' * 30)
+            for (i, model) in enumerate(working_models, 1):
+                result = next((r for r in results if r['name'] == model))
+                print(f'{i}. {model}')
+                print(f"   Speed: {result['response_time']:.2f}s")
+                print(f"   Quality: {result['quality']:.2f}")
+        self._save_working_models(working_models, results)
+        return summary
+
+    def _assess_quality(self, response: str, test_type: str) -> float:
+        """Quick quality assessment"""
+        if not response or response.startswith('['):
+            return 0.0
+        response_lower = response.lower().strip()
+        if test_type == 'math':
+            has_four = '4' in response
+            has_number = any((char.isdigit() for char in response))
+            return 0.9 if has_four else 0.6 if has_number else 0.2
+        return min(1.0, len(response) / 20.0)
+
+    def _save_working_models(self, working_models: List[str], results: List[Dict]):
+        """Save the working models list"""
+        data = {'working_models': working_models, 'validation_timestamp': time.time(), 'total_working': len(working_models), 'results': results}
+        with open('working_models.json', 'w') as f:
+            json.dump(data, f, indent=2)
+        with open('working_models.py', 'w') as f:
+            f.write('"""Working models list for Neo-Clone"""')
+            f.write('\n\nWORKING_MODELS = ')
+            f.write(json.dumps(working_models, indent=4))
+            f.write('\n')
+        print(f'\nSaved working models to:')
+        print(f'  • working_models.json')
+        print(f'  • working_models.py')
+        print(f'\nNeo-Clone can now use these {len(working_models)} models!')
+
+def main():
+    logging.basicConfig(level=logging.WARNING)
+    validator = FastModelValidator()
+    summary = validator.validate_opencode_models()
+    print(f'\nFAST VALIDATION COMPLETE!')
+    print(f"{summary['working_count']} models ready for use")
+    print(f"{summary['failed_count']} models failed")
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,313 @@
+from functools import lru_cache
+'\nNeo-Clone Superior TUI - Complete Phase 2 Implementation\nAdvanced multi-panel interface with integrated file manager and analytics\n'
+import os
+import sys
+import time
+import asyncio
+import threading
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+try:
+    from rich.console import Console
+    from rich.layout import Layout
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.table import Table
+    from rich.tree import Tree
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.live import Live
+    from rich.align import Align
+    from rich.columns import Columns
+    from rich.rule import Rule
+    from rich.markdown import Markdown
+    from rich.syntax import Syntax
+    from rich.prompt import Prompt
+    from rich import box
+    from rich.spinner import Spinner
+except ImportError as e:
+    print(f'Rich library not found: {e}')
+    print('Please install with: pip install rich')
+    sys.exit(1)
+try:
+    from integrated_file_manager import IntegratedFileManager
+    from realtime_analytics_dashboard import AnalyticsDashboard
+    from advanced_chat_system import AdvancedChatSystem
+    from tui_config_manager import TUIConfigManager
+except ImportError as e:
+    print(f'Component import error: {e}')
+    print('Some components may not be available')
+
+@dataclass
+class TUIState:
+    """TUI application state"""
+    current_panel: str = 'chat'
+    running: bool = True
+    input_mode: bool = False
+    current_input: str = ''
+    file_manager_path: str = '.'
+    selected_file_index: int = 0
+    analytics_refresh_rate: int = 5
+    show_help: bool = False
+
+class NeoCloneSuperiorTUI:
+    """Neo-Clone Superior TUI with complete Phase 2 features"""
+
+    def __init__(self):
+        self.console = Console()
+        self.layout = Layout()
+        self.state = TUIState()
+        try:
+            self.file_manager = IntegratedFileManager('.')
+            self.analytics_dashboard = AnalyticsDashboard()
+            self.chat_system = AdvancedChatSystem()
+            self.config_manager = TUIConfigManager()
+        except Exception as e:
+            self.console.print(f'[red]Error initializing components: {e}[/red]')
+            self.file_manager = None
+            self.analytics_dashboard = None
+            self.chat_system = None
+            self.config_manager = None
+        self._setup_layout()
+        self._start_background_tasks()
+        self.input_thread = threading.Thread(target=self._input_handler, daemon=True)
+        self.input_thread.start()
+
+    def _setup_layout(self):
+        """Setup the TUI layout"""
+        self.layout.split(Layout(name='header', size=3), Layout(name='main'), Layout(name='footer', size=3))
+        self.layout['main'].split_row(Layout(name='left', ratio=1), Layout(name='center', ratio=2), Layout(name='right', ratio=1))
+        self.layout['left'].split_column(Layout(name='chat', size=20), Layout(name='files'))
+        self.layout['center'].split_column(Layout(name='editor'), Layout(name='output'))
+        self.layout['right'].split_column(Layout(name='skills', size=15), Layout(name='analytics'))
+
+    def _start_background_tasks(self):
+        """Start background tasks"""
+        if self.analytics_dashboard:
+            pass
+
+    def _input_handler(self):
+        """Handle user input in separate thread"""
+        while self.state.running:
+            try:
+                if self.state.input_mode:
+                    user_input = input()
+                    self._handle_input(user_input)
+                else:
+                    time.sleep(0.1)
+            except (EOFError, KeyboardInterrupt):
+                self.state.running = False
+                break
+            except Exception as e:
+                print(f'Input error: {e}')
+
+    @lru_cache(maxsize=128)
+    def _handle_input(self, user_input: str):
+        """Handle user input"""
+        if user_input.lower() in ['quit', 'exit', 'q']:
+            self.state.running = False
+        elif user_input.lower() == 'help':
+            self.state.show_help = not self.state.show_help
+        elif user_input.lower() == 'chat':
+            self.state.current_panel = 'chat'
+            self.state.input_mode = True
+        elif user_input.lower() == 'files':
+            self.state.current_panel = 'files'
+        elif user_input.lower() == 'editor':
+            self.state.current_panel = 'editor'
+        elif user_input.lower() == 'analytics':
+            self.state.current_panel = 'analytics'
+        elif user_input.lower() == 'skills':
+            self.state.current_panel = 'skills'
+        elif user_input.startswith('cd '):
+            path = user_input[3:]
+            if self.file_manager:
+                (success, result) = self.file_manager.list_directory(path)
+                if success:
+                    self.state.file_manager_path = path
+                else:
+                    print(f'Error: {result}')
+        elif user_input.startswith('open '):
+            filename = user_input[5:]
+            if self.file_manager:
+                (success, message) = self.file_manager.open_file(filename)
+                if success:
+                    print(f'Opened: {filename}')
+                else:
+                    print(f'Error: {message}')
+        elif self.chat_system and self.state.current_panel == 'chat':
+            pass
+
+    def _render_header(self) -> Panel:
+        """Render header panel"""
+        header_text = Text()
+        header_text.append('Neo-Clone Superior TUI', style='bold blue')
+        header_text.append(' | ', style='dim')
+        header_text.append(f'Panel: {self.state.current_panel}', style='cyan')
+        header_text.append(' | ', style='dim')
+        header_text.append(datetime.now().strftime('%H:%M:%S'), style='green')
+        return Panel(Align.center(header_text), box=box.ROUNDED, style='blue on black')
+
+    def _render_chat(self) -> Panel:
+        """Render chat panel"""
+        if not self.chat_system:
+            return Panel('[dim]Chat system not available[/dim]', title='💬 Chat', box=box.ROUNDED)
+        chat_content = []
+        chat_content.append('[cyan]Neo-Clone:[/cyan] Welcome to Neo-Clone Superior TUI!')
+        chat_content.append("[dim]Type 'help' for commands[/dim]")
+        chat_content.append('')
+        chat_content.append('[yellow]Available commands:[/yellow]')
+        chat_content.append('  chat - Enter chat mode')
+        chat_content.append('  files - Browse files')
+        chat_content.append('  editor - Open editor')
+        chat_content.append('  analytics - View analytics')
+        chat_content.append('  skills - View skills')
+        chat_content.append('  cd <path> - Change directory')
+        chat_content.append('  open <file> - Open file')
+        chat_content.append('  help - Toggle help')
+        chat_content.append('  quit - Exit')
+        return Panel('\n'.join(chat_content), title='💬 Chat', box=box.ROUNDED, height=20)
+
+    def _render_files(self) -> Panel:
+        """Render file manager panel"""
+        if not self.file_manager:
+            return Panel('[dim]File manager not available[/dim]', title='📁 Files', box=box.ROUNDED)
+        try:
+            (success, result) = self.file_manager.list_directory(self.state.file_manager_path)
+            if not success:
+                return Panel(f'[red]Error: {result}[/red]', title='📁 Files', box=box.ROUNDED)
+            table = Table(show_header=True, header_style='bold blue')
+            table.add_column('Name', style='cyan')
+            table.add_column('Size', style='green')
+            table.add_column('Type', style='yellow')
+            table.add_row('..', '-', 'Directory')
+            for item in result[:15]:
+                name = item.name
+                size = f'{item.size}' if item.is_file else '-'
+                file_type = 'Directory' if item.is_directory else item.extension or 'File'
+                if item.is_directory:
+                    table.add_row(f'[blue]{name}/[/blue]', size, file_type)
+                else:
+                    table.add_row(name, size, file_type)
+            return Panel(table, title=f'📁 Files: {self.state.file_manager_path}', box=box.ROUNDED)
+        except Exception as e:
+            return Panel(f'[red]Error loading files: {e}[/red]', title='📁 Files', box=box.ROUNDED)
+
+    def _render_editor(self) -> Panel:
+        """Render editor panel"""
+        if not self.file_manager or not self.file_manager.editor.current_file:
+            editor_content = '[dim]No file opened[/dim]\n\n'
+            editor_content += "[yellow]Use 'open <filename>' to open a file[/yellow]"
+        else:
+            current_file = self.file_manager.editor.current_file
+            content = self.file_manager.editor.current_content or ''
+            syntax_lang = self.file_manager.editor.get_syntax_language()
+            lines = content.split('\n')[:50]
+            editor_content = f'[cyan]Current file: {current_file}[/cyan]\n\n'
+            for (i, line) in enumerate(lines, 1):
+                editor_content += f'[dim]{i:3d}[/dim] {line}\n'
+            if len(content.split('\n')) > 50:
+                editor_content += '\n[dim]... (truncated)[/dim]'
+        return Panel(editor_content, title='📝 Editor', box=box.ROUNDED)
+
+    def _render_output(self) -> Panel:
+        """Render output panel"""
+        output_content = []
+        output_content.append('[green]System Output:[/green]')
+        output_content.append('')
+        if self.file_manager and self.file_manager.editor.current_file:
+            output_content.append(f'[cyan]File:[/cyan] {self.file_manager.editor.current_file}')
+            output_content.append(f'[cyan]Language:[/cyan] {self.file_manager.editor.get_syntax_language()}')
+            output_content.append(f'[cyan]Lines:[/cyan] {(len(self.file_manager.editor.current_content.split()) if self.file_manager.editor.current_content else 0)}')
+        if self.file_manager:
+            stats = self.file_manager.get_file_stats()
+            output_content.append('')
+            output_content.append('[yellow]Workspace Stats:[/yellow]')
+            output_content.append(f"  Files: {stats.get('total_files', 0)}")
+            output_content.append(f"  Directories: {stats.get('total_directories', 0)}")
+            output_content.append(f"  Size: {stats.get('total_size_mb', 0)} MB")
+            output_content.append(f"  Git: {('Yes' if stats.get('git_enabled') else 'No')}")
+        return Panel('\n'.join(output_content), title='📊 Output', box=box.ROUNDED)
+
+    def _render_skills(self) -> Panel:
+        """Render skills panel"""
+        skills_content = []
+        skills_content.append('[green]Available Skills:[/green]')
+        skills_content.append('')
+        skills = ['Code Generation', 'Text Analysis', 'Data Inspector', 'File Manager', 'Web Search', 'Analytics', 'ML Engineering', 'Autonomous Intelligence', 'Smart Routing', 'Real-time Analytics']
+        for skill in skills:
+            skills_content.append(f'  [cyan]•[/cyan] {skill}')
+        return Panel('\n'.join(skills_content), title='🧠 Skills', box=box.ROUNDED, height=15)
+
+    def _render_analytics(self) -> Panel:
+        """Render analytics panel"""
+        if not self.analytics_dashboard:
+            return Panel('[dim]Analytics not available[/dim]', title='📈 Analytics', box=box.ROUNDED)
+        try:
+            summary = self.analytics_dashboard.metrics_collector.get_all_metrics_summary()
+            analytics_content = []
+            analytics_content.append('[green]Performance Metrics:[/green]')
+            analytics_content.append('')
+            analytics_content.append(f"[cyan]Uptime:[/cyan] {summary['uptime_seconds']:.0f}s")
+            analytics_content.append(f"[cyan]Metrics:[/cyan] {summary['total_metrics']}")
+            for (metric_name, metric_data) in summary.get('metrics', {}).items():
+                if metric_name in ['cpu_usage', 'memory_usage', 'response_time']:
+                    value = metric_data.get('latest', 0)
+                    unit = metric_data.get('unit', '')
+                    analytics_content.append(f'[cyan]{metric_name}:[/cyan] {value:.1f} {unit}')
+            return Panel('\n'.join(analytics_content), title='📈 Analytics', box=box.ROUNDED)
+        except Exception as e:
+            return Panel(f'[red]Analytics error: {e}[/red]', title='📈 Analytics', box=box.ROUNDED)
+
+    def _render_footer(self) -> Panel:
+        """Render footer panel"""
+        if self.state.show_help:
+            help_text = '[cyan]Help:[/cyan] chat|files|editor|analytics|skills|cd <path>|open <file>|help|quit'
+        else:
+            help_text = "[dim]Press 'h' for help | 'q' to quit[/dim]"
+        return Panel(Align.center(help_text), box=box.ROUNDED, style='dim')
+
+    def _render_layout(self):
+        """Render the complete layout"""
+        self.layout['header'].update(self._render_header())
+        self.layout['chat'].update(self._render_chat())
+        self.layout['files'].update(self._render_files())
+        self.layout['editor'].update(self._render_editor())
+        self.layout['output'].update(self._render_output())
+        self.layout['skills'].update(self._render_skills())
+        self.layout['analytics'].update(self._render_analytics())
+        self.layout['footer'].update(self._render_footer())
+
+    def run(self):
+        """Run the TUI application"""
+        self.console.print('[bold green]Neo-Clone Superior TUI Starting...[/bold green]')
+        self.console.print("[dim]Press 'h' for help, 'q' to quit[/dim]")
+        try:
+            with Live(self.layout, refresh_per_second=4, screen=True) as live:
+                while self.state.running:
+                    self._render_layout()
+                    time.sleep(0.25)
+        except KeyboardInterrupt:
+            self.console.print('\n[yellow]Interrupted by user[/yellow]')
+        except Exception as e:
+            self.console.print(f'\n[red]Error: {e}[/red]')
+        finally:
+            if self.analytics_dashboard:
+                self.analytics_dashboard.cleanup()
+            self.console.print('[green]Neo-Clone TUI Shutdown Complete[/green]')
+
+def main():
+    """Main entry point"""
+    try:
+        tui = NeoCloneSuperiorTUI()
+        tui.run()
+    except KeyboardInterrupt:
+        print('\n[yellow]Interrupted by user[/yellow]')
+    except Exception as e:
+        print(f'[red]Error starting TUI: {e}[/red]')
+        import traceback
+        traceback.print_exc()
+if __name__ == '__main__':
+    main()

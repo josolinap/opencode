@@ -1,0 +1,332 @@
+from functools import lru_cache
+'\nNeo-Clone Real-Time Analytics Dashboard\nAdvanced performance monitoring and analytics system\n'
+import time
+import threading
+import json
+import os
+from typing import Dict, List, Any, Optional, Callable
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from collections import defaultdict, deque
+import statistics
+import asyncio
+from pathlib import Path
+
+@dataclass
+class MetricPoint:
+    """Single metric data point"""
+    timestamp: datetime
+    value: float
+    metadata: Dict[str, Any] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {'timestamp': self.timestamp.isoformat(), 'value': self.value, 'metadata': self.metadata or {}}
+
+@dataclass
+class PerformanceMetric:
+    """Performance metric definition"""
+    name: str
+    unit: str
+    description: str
+    data_type: str
+    max_points: int = 1000
+
+    def __post_init__(self):
+        self.points: deque = deque(maxlen=self.max_points)
+
+class MetricsCollector:
+    """Collects and manages performance metrics"""
+
+    def __init__(self):
+        self.metrics: Dict[str, PerformanceMetric] = {}
+        self.counters: Dict[str, float] = defaultdict(float)
+        self.gauges: Dict[str, float] = defaultdict(float)
+        self.histograms: Dict[str, List[float]] = defaultdict(list)
+        self.start_time = datetime.now()
+        self._lock = threading.Lock()
+        self._initialize_default_metrics()
+
+    def _initialize_default_metrics(self):
+        """Initialize default performance metrics"""
+        default_metrics = [PerformanceMetric('cpu_usage', '%', 'CPU usage percentage', 'gauge'), PerformanceMetric('memory_usage', 'MB', 'Memory usage in MB', 'gauge'), PerformanceMetric('response_time', 'ms', 'Response time in milliseconds', 'histogram'), PerformanceMetric('requests_per_second', 'req/s', 'Requests per second', 'gauge'), PerformanceMetric('error_rate', '%', 'Error rate percentage', 'gauge'), PerformanceMetric('skill_executions', 'count', 'Total skill executions', 'counter'), PerformanceMetric('file_operations', 'count', 'Total file operations', 'counter'), PerformanceMetric('git_operations', 'count', 'Total git operations', 'counter'), PerformanceMetric('chat_messages', 'count', 'Total chat messages', 'counter'), PerformanceMetric('ui_updates', 'count', 'Total UI updates', 'counter')]
+        for metric in default_metrics:
+            self.metrics[metric.name] = metric
+
+    @lru_cache(maxsize=128)
+    def record_metric(self, metric_name: str, value: float, metadata: Dict[str, Any]=None):
+        """Record a metric value"""
+        with self._lock:
+            if metric_name not in self.metrics:
+                self.metrics[metric_name] = PerformanceMetric(metric_name, '', '', 'gauge')
+            metric = self.metrics[metric_name]
+            point = MetricPoint(datetime.now(), value, metadata)
+            metric.points.append(point)
+            if metric.data_type == 'counter':
+                self.counters[metric_name] += value
+            elif metric.data_type == 'gauge':
+                self.gauges[metric_name] = value
+            elif metric.data_type == 'histogram':
+                self.histograms[metric_name].append(value)
+                if len(self.histograms[metric_name]) > 1000:
+                    self.histograms[metric_name] = self.histograms[metric_name][-1000:]
+
+    def get_metric_stats(self, metric_name: str, time_window: Optional[int]=None) -> Dict[str, Any]:
+        """Get statistics for a metric"""
+        with self._lock:
+            if metric_name not in self.metrics:
+                return {'error': f'Metric {metric_name} not found'}
+            metric = self.metrics[metric_name]
+            points = list(metric.points)
+            if time_window:
+                cutoff_time = datetime.now() - timedelta(seconds=time_window)
+                points = [p for p in points if p.timestamp >= cutoff_time]
+            if not points:
+                return {'error': f'No data points for metric {metric_name}'}
+            values = [p.value for p in points]
+            stats = {'name': metric_name, 'unit': metric.unit, 'description': metric.description, 'data_type': metric.data_type, 'count': len(values), 'latest': values[-1] if values else None, 'min': min(values), 'max': max(values), 'avg': statistics.mean(values), 'median': statistics.median(values), 'sum': sum(values), 'time_range': {'start': points[0].timestamp.isoformat(), 'end': points[-1].timestamp.isoformat()}}
+            if len(values) > 1:
+                stats['std_dev'] = statistics.stdev(values)
+            if metric.data_type == 'histogram' and len(values) > 10:
+                sorted_values = sorted(values)
+                stats['percentiles'] = {'p50': sorted_values[int(len(sorted_values) * 0.5)], 'p90': sorted_values[int(len(sorted_values) * 0.9)], 'p95': sorted_values[int(len(sorted_values) * 0.95)], 'p99': sorted_values[int(len(sorted_values) * 0.99)]}
+            return stats
+
+    def get_all_metrics_summary(self) -> Dict[str, Any]:
+        """Get summary of all metrics"""
+        with self._lock:
+            summary = {'total_metrics': len(self.metrics), 'collection_start_time': self.start_time.isoformat(), 'uptime_seconds': (datetime.now() - self.start_time).total_seconds(), 'metrics': {}}
+            for metric_name in self.metrics:
+                stats = self.get_metric_stats(metric_name, time_window=300)
+                if 'error' not in stats:
+                    summary['metrics'][metric_name] = {'latest': stats['latest'], 'avg': stats['avg'], 'count': stats['count'], 'unit': stats['unit']}
+            return summary
+
+    def export_metrics(self, filepath: str, time_window: Optional[int]=None):
+        """Export metrics to JSON file"""
+        with self._lock:
+            export_data = {'export_time': datetime.now().isoformat(), 'time_window_seconds': time_window, 'metrics': {}}
+            for (metric_name, metric) in self.metrics.items():
+                points = list(metric.points)
+                if time_window:
+                    cutoff_time = datetime.now() - timedelta(seconds=time_window)
+                    points = [p for p in points if p.timestamp >= cutoff_time]
+                export_data['metrics'][metric_name] = {'definition': {'name': metric.name, 'unit': metric.unit, 'description': metric.description, 'data_type': metric.data_type}, 'data_points': [p.to_dict() for p in points]}
+            with open(filepath, 'w') as f:
+                json.dump(export_data, f, indent=2)
+
+class SystemMonitor:
+    """System resource monitoring"""
+
+    def __init__(self, metrics_collector: MetricsCollector):
+        self.metrics_collector = metrics_collector
+        self.monitoring = False
+        self.monitor_thread = None
+        self.monitor_interval = 5.0
+
+    def start_monitoring(self):
+        """Start system monitoring"""
+        if self.monitoring:
+            return
+        self.monitoring = True
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
+
+    def stop_monitoring(self):
+        """Stop system monitoring"""
+        self.monitoring = False
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=10)
+
+    def _monitor_loop(self):
+        """Main monitoring loop"""
+        while self.monitoring:
+            try:
+                self._collect_system_metrics()
+                time.sleep(self.monitor_interval)
+            except Exception as e:
+                print(f'Error in system monitoring: {e}')
+                time.sleep(self.monitor_interval)
+
+    def _collect_system_metrics(self):
+        """Collect system metrics"""
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=1)
+            self.metrics_collector.record_metric('cpu_usage', cpu_percent)
+            memory = psutil.virtual_memory()
+            memory_mb = memory.used / (1024 * 1024)
+            self.metrics_collector.record_metric('memory_usage', memory_mb)
+            disk = psutil.disk_usage('.')
+            disk_usage_percent = disk.used / disk.total * 100
+            self.metrics_collector.record_metric('disk_usage', disk_usage_percent)
+        except ImportError:
+            self.metrics_collector.record_metric('cpu_usage', 0.0)
+            self.metrics_collector.record_metric('memory_usage', 0.0)
+        except Exception as e:
+            print(f'Error collecting system metrics: {e}')
+
+class AnalyticsDashboard:
+    """Main analytics dashboard"""
+
+    def __init__(self):
+        self.metrics_collector = MetricsCollector()
+        self.system_monitor = SystemMonitor(self.metrics_collector)
+        self.alerts: List[Dict[str, Any]] = []
+        self.alert_rules: List[Dict[str, Any]] = []
+        self.dashboard_config = self._load_dashboard_config()
+        self._initialize_alert_rules()
+        self.system_monitor.start_monitoring()
+
+    def _load_dashboard_config(self) -> Dict[str, Any]:
+        """Load dashboard configuration"""
+        config_path = Path('analytics_dashboard_config.json')
+        default_config = {'refresh_interval': 5, 'time_windows': [60, 300, 900, 3600], 'default_time_window': 300, 'panels': [{'name': 'System Performance', 'metrics': ['cpu_usage', 'memory_usage', 'disk_usage'], 'type': 'line_chart'}, {'name': 'Application Metrics', 'metrics': ['response_time', 'requests_per_second', 'error_rate'], 'type': 'line_chart'}, {'name': 'Usage Statistics', 'metrics': ['skill_executions', 'file_operations', 'git_operations', 'chat_messages'], 'type': 'counter'}]}
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    user_config = json.load(f)
+                    default_config.update(user_config)
+            except Exception as e:
+                print(f'Error loading dashboard config: {e}')
+        return default_config
+
+    def _initialize_alert_rules(self):
+        """Initialize default alert rules"""
+        default_rules = [{'name': 'High CPU Usage', 'metric': 'cpu_usage', 'condition': 'greater_than', 'threshold': 80.0, 'duration': 60, 'severity': 'warning', 'enabled': True}, {'name': 'High Memory Usage', 'metric': 'memory_usage', 'condition': 'greater_than', 'threshold': 1000.0, 'duration': 60, 'severity': 'warning', 'enabled': True}, {'name': 'High Error Rate', 'metric': 'error_rate', 'condition': 'greater_than', 'threshold': 5.0, 'duration': 30, 'severity': 'critical', 'enabled': True}, {'name': 'Slow Response Time', 'metric': 'response_time', 'condition': 'greater_than', 'threshold': 1000.0, 'duration': 30, 'severity': 'warning', 'enabled': True}]
+        self.alert_rules.extend(default_rules)
+
+    def record_event(self, event_type: str, value: float=1.0, metadata: Dict[str, Any]=None):
+        """Record an application event"""
+        metric_name = f'event_{event_type}'
+        self.metrics_collector.record_metric(metric_name, value, metadata)
+        self._check_alerts(metric_name)
+
+    def _check_alerts(self, metric_name: str):
+        """Check if any alerts should be triggered"""
+        for rule in self.alert_rules:
+            if not rule['enabled'] or rule['metric'] != metric_name:
+                continue
+            stats = self.metrics_collector.get_metric_stats(metric_name, time_window=rule['duration'])
+            if 'error' in stats:
+                continue
+            latest_value = stats['latest']
+            threshold = rule['threshold']
+            condition = rule['condition']
+            triggered = False
+            if condition == 'greater_than' and latest_value > threshold:
+                triggered = True
+            elif condition == 'less_than' and latest_value < threshold:
+                triggered = True
+            elif condition == 'equals' and latest_value == threshold:
+                triggered = True
+            if triggered:
+                self._trigger_alert(rule, latest_value, stats)
+
+    def _trigger_alert(self, rule: Dict[str, Any], value: float, stats: Dict[str, Any]):
+        """Trigger an alert"""
+        alert = {'id': len(self.alerts) + 1, 'rule_name': rule['name'], 'metric': rule['metric'], 'value': value, 'threshold': rule['threshold'], 'severity': rule['severity'], 'timestamp': datetime.now().isoformat(), 'message': f"{rule['name']}: {rule['metric']} is {value} (threshold: {rule['threshold']})", 'stats': stats}
+        self.alerts.append(alert)
+        if len(self.alerts) > 100:
+            self.alerts = self.alerts[-100:]
+        print(f"ALERT: {alert['message']}")
+
+    def get_dashboard_data(self, time_window: Optional[int]=None) -> Dict[str, Any]:
+        """Get dashboard data for display"""
+        if time_window is None:
+            time_window = self.dashboard_config['default_time_window']
+        dashboard_data = {'timestamp': datetime.now().isoformat(), 'time_window': time_window, 'panels': [], 'alerts': self.alerts[-10:], 'summary': self.metrics_collector.get_all_metrics_summary()}
+        for panel_config in self.dashboard_config['panels']:
+            panel_data = {'name': panel_config['name'], 'type': panel_config['type'], 'metrics': {}}
+            for metric_name in panel_config['metrics']:
+                stats = self.metrics_collector.get_metric_stats(metric_name, time_window)
+                if 'error' not in stats:
+                    panel_data['metrics'][metric_name] = stats
+            dashboard_data['panels'].append(panel_data)
+        return dashboard_data
+
+    def export_dashboard_data(self, filepath: str, time_window: Optional[int]=None):
+        """Export dashboard data to JSON file"""
+        dashboard_data = self.get_dashboard_data(time_window)
+        with open(filepath, 'w') as f:
+            json.dump(dashboard_data, f, indent=2)
+
+    def get_performance_report(self, time_window: Optional[int]=None) -> str:
+        """Generate a performance report"""
+        if time_window is None:
+            time_window = self.dashboard_config['default_time_window']
+        dashboard_data = self.get_dashboard_data(time_window)
+        report = []
+        report.append('Neo-Clone Performance Report')
+        report.append('=' * 40)
+        report.append(f'Time Window: {time_window} seconds')
+        report.append(f"Generated: {dashboard_data['timestamp']}")
+        report.append('')
+        if 'System Performance' in [p['name'] for p in dashboard_data['panels']]:
+            report.append('System Performance:')
+            system_panel = next((p for p in dashboard_data['panels'] if p['name'] == 'System Performance'))
+            for (metric_name, stats) in system_panel['metrics'].items():
+                report.append(f"  {metric_name}: {stats['latest']:.2f} {stats['unit']} (avg: {stats['avg']:.2f})")
+            report.append('')
+        if 'Application Metrics' in [p['name'] for p in dashboard_data['panels']]:
+            report.append('Application Performance:')
+            app_panel = next((p for p in dashboard_data['panels'] if p['name'] == 'Application Metrics'))
+            for (metric_name, stats) in app_panel['metrics'].items():
+                report.append(f"  {metric_name}: {stats['latest']:.2f} {stats['unit']} (avg: {stats['avg']:.2f})")
+            report.append('')
+        if 'Usage Statistics' in [p['name'] for p in dashboard_data['panels']]:
+            report.append('Usage Statistics:')
+            usage_panel = next((p for p in dashboard_data['panels'] if p['name'] == 'Usage Statistics'))
+            for (metric_name, stats) in usage_panel['metrics'].items():
+                report.append(f"  {metric_name}: {stats['latest']:.0f} {stats['unit']}")
+            report.append('')
+        if dashboard_data['alerts']:
+            report.append('Recent Alerts:')
+            for alert in dashboard_data['alerts'][-5:]:
+                report.append(f"  [{alert['severity'].upper()}] {alert['message']}")
+            report.append('')
+        summary = dashboard_data['summary']
+        report.append('Summary:')
+        report.append(f"  Uptime: {summary['uptime_seconds']:.0f} seconds")
+        report.append(f"  Total metrics: {summary['total_metrics']}")
+        return '\n'.join(report)
+
+    def cleanup(self):
+        """Cleanup resources"""
+        self.system_monitor.stop_monitoring()
+
+async def main():
+    """Test the analytics dashboard"""
+    print('Neo-Clone Analytics Dashboard Test')
+    print('=' * 50)
+    dashboard = AnalyticsDashboard()
+    print('Simulating application activity...')
+    for i in range(20):
+        dashboard.record_event('skill_execution', 1.0)
+        dashboard.record_event('response_time', 50 + i * 10 % 200)
+        dashboard.record_event('ui_update', 1.0)
+        if i % 5 == 0:
+            dashboard.record_event('file_operation', 1.0)
+        if i % 7 == 0:
+            dashboard.record_event('chat_message', 1.0)
+        if i % 10 == 0:
+            dashboard.record_event('error', 1.0)
+        await asyncio.sleep(0.5)
+    await asyncio.sleep(6)
+    dashboard_data = dashboard.get_dashboard_data(time_window=60)
+    print(f'\nDashboard Data:')
+    print(f"  Timestamp: {dashboard_data['timestamp']}")
+    print(f"  Panels: {len(dashboard_data['panels'])}")
+    print(f"  Recent alerts: {len(dashboard_data['alerts'])}")
+    for panel in dashboard_data['panels']:
+        print(f"\n{panel['name']}:")
+        for (metric_name, stats) in panel['metrics'].items():
+            print(f"  {metric_name}: {stats['latest']:.2f} {stats['unit']}")
+    report = dashboard.get_performance_report(time_window=60)
+    print(f'\n{report}')
+    dashboard.export_dashboard_data('dashboard_export.json', time_window=60)
+    dashboard.metrics_collector.export_metrics('metrics_export.json', time_window=60)
+    print('\nData exported to dashboard_export.json and metrics_export.json')
+    dashboard.cleanup()
+    print('\n✅ Analytics dashboard test completed')
+if __name__ == '__main__':
+    asyncio.run(main())

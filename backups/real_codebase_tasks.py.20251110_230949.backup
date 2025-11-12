@@ -1,0 +1,232 @@
+from functools import lru_cache
+'\nReal Codebase Tasks - Testing Neo-Clone on Our Actual Project\n===========================================================\n\nThis script tasks Neo-Clone with real work related to our codebase:\n- Code analysis and improvement\n- Documentation generation  \n- Bug detection and fixes\n- Feature enhancement\n- Performance optimization\n- Integration testing\n'
+import sys
+import os
+from pathlib import Path
+os.system('chcp 65001 >nul 2>&1')
+sys.path.insert(0, str(Path(__file__).parent))
+
+@lru_cache(maxsize=128)
+def analyze_codebase_structure():
+    """Task 1: Analyze our codebase structure and suggest improvements."""
+    print('=' * 70)
+    print('TASK 1: Codebase Structure Analysis')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        file_skill = registry.get('file_manager')
+        result = file_skill.execute({'action': 'analyze_structure', 'path': '.'})
+        print('Codebase Analysis Results:')
+        print(f"Files found: {len(result.get('files', []))}")
+        text_skill = registry.get('text_analysis')
+        key_files = ['README.md', 'requirements.txt', 'opencode.json']
+        project_summary = ''
+        for file in key_files:
+            if Path(file).exists():
+                try:
+                    with open(file, 'r', encoding='utf-8') as f:
+                        content = f.read()[:1000]
+                        project_summary += f'\n--- {file} ---\n{content}\n'
+                except:
+                    pass
+        if project_summary:
+            analysis = text_skill.execute({'text': project_summary, 'analysis_type': 'comprehensive'})
+            print('\nProject Analysis:')
+            print(f"Summary available: {bool(analysis.get('summary'))}")
+            print(f"Analysis length: {len(analysis.get('summary', ''))}")
+        return True
+    except Exception as e:
+        print(f'Task 1 failed: {e}')
+        return False
+
+def improve_skills_documentation():
+    """Task 2: Generate comprehensive documentation for our skills."""
+    print('\n' + '=' * 70)
+    print('TASK 2: Skills Documentation Generation')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        code_skill = registry.get('code_generation')
+        skills = registry.list_skills()
+        print(f'Generating documentation for {len(skills)} skills...')
+        doc_prompt = f"\n        Create comprehensive documentation for the following Neo-Clone skills:\n        {', '.join(skills)}\n        \n        For each skill, include:\n        - Purpose and functionality\n        - Parameters and usage examples\n        - Integration patterns\n        - Best practices\n        - Error handling\n        \n        Format as Markdown with proper sections and code examples.\n        "
+        result = code_skill.execute({'prompt': doc_prompt, 'language': 'markdown', 'style': 'comprehensive'})
+        documentation = result.get('code', '')
+        if len(documentation) > 500:
+            print(f'[OK] Generated {len(documentation)} characters of documentation')
+            with open('SKILLS_DOCUMENTATION.md', 'w', encoding='utf-8') as f:
+                f.write(documentation)
+            print('[OK] Documentation saved to SKILLS_DOCUMENTATION.md')
+            return True
+        else:
+            print(f'[PARTIAL] Generated only {len(documentation)} characters')
+            return False
+    except Exception as e:
+        print(f'Task 2 failed: {e}')
+        return False
+
+def detect_and_fix_bugs():
+    """Task 3: Detect potential bugs in our codebase and suggest fixes."""
+    print('\n' + '=' * 70)
+    print('TASK 3: Bug Detection and Fixes')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        code_skill = registry.get('code_generation')
+        python_files = list(Path('skills').glob('*.py'))[:5]
+        bug_reports = []
+        for py_file in python_files:
+            try:
+                with open(py_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                analysis_prompt = f'\n                Analyze this Python code for potential bugs and issues:\n                \n                File: {py_file.name}\n                \n                Code:\n                {content[:2000]}  # First 2000 chars\n                \n                Look for:\n                - Import errors\n                - Type issues\n                - Logic errors\n                - Performance problems\n                - Security vulnerabilities\n                - Missing error handling\n                \n                Provide specific fixes for any issues found.\n                '
+                result = code_skill.execute({'prompt': analysis_prompt, 'language': 'python', 'style': 'analytical'})
+                analysis = result.get('code', '')
+                if len(analysis) > 100:
+                    bug_reports.append(f'--- {py_file.name} ---\n{analysis[:500]}...')
+            except Exception as e:
+                print(f'Could not analyze {py_file.name}: {e}')
+        if bug_reports:
+            print(f'[OK] Analyzed {len(python_files)} files, found issues in {len(bug_reports)} files')
+            with open('BUG_ANALYSIS_REPORT.md', 'w', encoding='utf-8') as f:
+                f.write('# Bug Analysis Report\n\n')
+                f.write(f'Generated: {Path().cwd()}\n')
+                f.write(f'Files analyzed: {len(python_files)}\n')
+                f.write(f'Issues found: {len(bug_reports)}\n\n')
+                for report in bug_reports:
+                    f.write(report + '\n\n')
+            print('[OK] Bug analysis saved to BUG_ANALYSIS_REPORT.md')
+            return True
+        else:
+            print('[OK] No significant issues found')
+            return True
+    except Exception as e:
+        print(f'Task 3 failed: {e}')
+        return False
+
+def enhance_opencode_integration():
+    """Task 4: Enhance our OpenCode integration with new features."""
+    print('\n' + '=' * 70)
+    print('TASK 4: OpenCode Integration Enhancement')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        code_skill = registry.get('code_generation')
+        enhancement_prompt = '\n        Enhance the OpenCode integration with these new features:\n        \n        1. Model performance comparison and benchmarking\n        2. Automatic model selection based on task type\n        3. Response caching for common queries\n        4. Cost tracking and optimization\n        5. Fallback model chains for reliability\n        6. Real-time performance monitoring\n        7. Custom model fine-tuning suggestions\n        \n        Create a complete enhanced integration class that extends the current functionality.\n        Include proper error handling, logging, and configuration options.\n        '
+        result = code_skill.execute({'prompt': enhancement_prompt, 'language': 'python', 'style': 'production'})
+        enhanced_code = result.get('code', '')
+        if len(enhanced_code) > 1000:
+            print(f'[OK] Generated {len(enhanced_code)} characters of enhanced integration')
+            with open('enhanced_opencode_v2.py', 'w', encoding='utf-8') as f:
+                f.write(enhanced_code)
+            print('[OK] Enhanced integration saved to enhanced_opencode_v2.py')
+            return True
+        else:
+            print(f'[PARTIAL] Generated only {len(enhanced_code)} characters')
+            return False
+    except Exception as e:
+        print(f'Task 4 failed: {e}')
+        return False
+
+def create_performance_dashboard():
+    """Task 5: Create a performance dashboard for our system."""
+    print('\n' + '=' * 70)
+    print('TASK 5: Performance Dashboard Creation')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        code_skill = registry.get('code_generation')
+        dashboard_prompt = '\n        Create a comprehensive performance dashboard for Neo-Clone that includes:\n        \n        1. Real-time skill performance metrics\n        2. OpenCode model usage statistics\n        3. System health monitoring\n        4. Error rate tracking\n        5. Response time analytics\n        6. Resource usage monitoring\n        7. Interactive charts and graphs\n        8. Alert system for issues\n        \n        Use Flask/FastAPI for the web interface and include:\n        - REST API endpoints\n        - WebSocket for real-time updates\n        - Database integration for historical data\n        - Responsive web UI with modern CSS/JavaScript\n        \n        Make it production-ready with proper authentication and security.\n        '
+        result = code_skill.execute({'prompt': dashboard_prompt, 'language': 'python', 'style': 'full_stack'})
+        dashboard_code = result.get('code', '')
+        if len(dashboard_code) > 2000:
+            print(f'[OK] Generated {len(dashboard_code)} characters of dashboard code')
+            with open('performance_dashboard.py', 'w', encoding='utf-8') as f:
+                f.write(dashboard_code)
+            print('[OK] Performance dashboard saved to performance_dashboard.py')
+            return True
+        else:
+            print(f'[PARTIAL] Generated only {len(dashboard_code)} characters')
+            return False
+    except Exception as e:
+        print(f'Task 5 failed: {e}')
+        return False
+
+def generate_test_suite():
+    """Task 6: Generate comprehensive test suite for our skills."""
+    print('\n' + '=' * 70)
+    print('TASK 6: Comprehensive Test Suite Generation')
+    print('=' * 70)
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry()
+        code_skill = registry.get('code_generation')
+        skills = registry.list_skills()
+        test_prompt = f"\n        Create a comprehensive test suite for these Neo-Clone skills:\n        {', '.join(skills)}\n        \n        For each skill, include:\n        1. Unit tests for all methods\n        2. Integration tests with other skills\n        3. Performance benchmarks\n        4. Error handling tests\n        5. Edge case testing\n        6. Mock external dependencies\n        7. Test data fixtures\n        8. CI/CD pipeline integration\n        \n        Use pytest framework and include:\n        - Parameterized tests\n        - Async testing where applicable\n        - Coverage reporting\n        - Performance profiling\n        - Test reporting and analytics\n        \n        Make it production-ready with proper test organization and documentation.\n        "
+        result = code_skill.execute({'prompt': test_prompt, 'language': 'python', 'style': 'testing'})
+        test_code = result.get('code', '')
+        if len(test_code) > 1500:
+            print(f'[OK] Generated {len(test_code)} characters of test suite')
+            with open('comprehensive_test_suite.py', 'w', encoding='utf-8') as f:
+                f.write(test_code)
+            print('[OK] Test suite saved to comprehensive_test_suite.py')
+            return True
+        else:
+            print(f'[PARTIAL] Generated only {len(test_code)} characters')
+            return False
+    except Exception as e:
+        print(f'Task 6 failed: {e}')
+        return False
+
+def main():
+    """Execute all real codebase tasks."""
+    print('NEO-CLONE: REAL CODEBASE TASKS')
+    print('Testing Neo-Clone on actual project work')
+    print('=' * 70)
+    tasks = [('Codebase Structure Analysis', analyze_codebase_structure), ('Skills Documentation Generation', improve_skills_documentation), ('Bug Detection and Fixes', detect_and_fix_bugs), ('OpenCode Integration Enhancement', enhance_opencode_integration), ('Performance Dashboard Creation', create_performance_dashboard), ('Comprehensive Test Suite Generation', generate_test_suite)]
+    results = []
+    for (task_name, task_func) in tasks:
+        print(f"\n{'=' * 70}")
+        print(f'EXECUTING: {task_name}')
+        print('=' * 70)
+        try:
+            success = task_func()
+            results.append((task_name, success))
+            status = 'SUCCESS' if success else 'FAILED'
+            print(f'\n{task_name}: {status}')
+        except Exception as e:
+            results.append((task_name, False))
+            print(f'\n{task_name}: FAILED - {e}')
+    print('\n' + '=' * 70)
+    print('TASK EXECUTION SUMMARY')
+    print('=' * 70)
+    successful = sum((1 for (_, success) in results if success))
+    total = len(results)
+    for (task_name, success) in results:
+        status = '[OK]' if success else '[FAIL]'
+        print(f'{status} {task_name}')
+    print(f'\nResults: {successful}/{total} tasks completed successfully')
+    if successful >= total * 0.7:
+        print('\n[SUCCESS] Neo-Clone successfully completed most real codebase tasks!')
+        print('The system is capable of handling actual project work.')
+    elif successful >= total * 0.5:
+        print('\n[PARTIAL] Neo-Clone completed some real codebase tasks.')
+        print('The system shows promise but needs refinement.')
+    else:
+        print('\n[LIMITED] Neo-Clone struggled with real codebase tasks.')
+        print('Additional development needed for practical use.')
+    print('\nGenerated Files:')
+    generated_files = ['SKILLS_DOCUMENTATION.md', 'BUG_ANALYSIS_REPORT.md', 'enhanced_opencode_v2.py', 'performance_dashboard.py', 'comprehensive_test_suite.py']
+    for file in generated_files:
+        if Path(file).exists():
+            size = Path(file).stat().st_size
+            print(f'  [OK] {file} ({size} bytes)')
+        else:
+            print(f'  [MISSING] {file}')
+if __name__ == '__main__':
+    main()

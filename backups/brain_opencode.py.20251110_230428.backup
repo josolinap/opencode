@@ -1,0 +1,532 @@
+from functools import lru_cache
+"\nbrain_opencode.py - Opencode-compatible central reasoning engine for Neo-Clone\n\nThis module extends the original brain.py to work seamlessly with Opencode's\nmodel selection system while maintaining all existing functionality.\n\nFeatures:\n- Integration with Opencode model selection\n- Backward compatibility with original brain.py\n- Enhanced model management\n- Single LLM client per process pattern\n- Conversation context/history management\n- Intent parsing and skill routing\n- MiniMax Agent integration\n"
+import logging
+import time
+import os
+import sys
+from typing import List, Dict, Optional, Any
+from dataclasses import dataclass
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from config_opencode import Config, load_config, get_current_opencode_model
+except ImportError as e:
+    logging.warning(f'Could not import config_opencode: {e}')
+    Config = None
+    load_config = None
+    get_current_opencode_model = None
+try:
+    from skills import SkillRegistry
+except ImportError as e:
+    logging.warning(f'Could not import skills: {e}')
+    SkillRegistry = None
+try:
+    from llm_client_opencode import LLMClient, LLMResponse
+except ImportError as e:
+    logging.warning(f'Could not import llm_client_opencode: {e}')
+    LLMClient = None
+    LLMResponse = None
+try:
+    from skills.self_optimizing_config import SelfOptimizingConfig
+except ImportError:
+    SelfOptimizingConfig = None
+try:
+    from skills.task_orchestrator import ModelOrchestrator, Task, TaskResult
+except ImportError:
+    ModelOrchestrator = None
+    Task = None
+    TaskResult = None
+try:
+    from skills.intelligent_model_manager import IntelligentModelManager
+except ImportError:
+    IntelligentModelManager = None
+logger = logging.getLogger(__name__)
+
+@dataclass
+class Message:
+    role: str
+    content: str
+    timestamp: Optional[float] = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = time.time()
+
+class ConversationHistory:
+
+    @lru_cache(maxsize=128)
+    def __init__(self, max_messages: int=20):
+        self.max_messages = max_messages
+        self._messages: List[Message] = []
+        self.session_start = time.time()
+        self._stats_cache = None
+        self._cache_timestamp = 0
+
+    def add(self, role: str, content: str):
+        self._messages.append(Message(role=role, content=content))
+        if len(self._messages) > self.max_messages:
+            self._messages = self._messages[-self.max_messages:]
+
+    def to_list(self) -> List[Dict[str, str]]:
+        return [{'role': m.role, 'content': m.content} for m in self._messages]
+
+    def to_enhanced_list(self) -> List[Dict[str, Any]]:
+        """Enhanced message list with metadata"""
+        return [{'role': m.role, 'content': m.content, 'timestamp': m.timestamp, 'session_time': m.timestamp - self.session_start} for m in self._messages]
+
+    def clear(self):
+        self._messages = []
+        self.session_start = time.time()
+        self._stats_cache = None
+
+    def get_conversation_summary(self, max_length: int=200) -> str:
+        """Get a summary of the conversation for context"""
+        if not self._messages:
+            return 'No conversation history available.'
+        recent_messages = self._messages[-5:]
+        summary_parts = []
+        for msg in recent_messages:
+            role_indicator = 'U:' if msg.role == 'user' else 'A:'
+            content_preview = msg.content[:50] + '...' if len(msg.content) > 50 else msg.content
+            summary_parts.append(f'{role_indicator} {content_preview}')
+        summary = ' | '.join(summary_parts)
+        if len(summary) > max_length:
+            summary = summary[:max_length - 3] + '...'
+        return f'Recent conversation: {summary}'
+
+    def export_conversation(self, format: str='json') -> str:
+        """Export conversation history in specified format"""
+        try:
+            if format.lower() == 'json':
+                import json
+                return json.dumps(self.to_enhanced_list(), indent=2, default=str)
+            elif format.lower() == 'text':
+                lines = []
+                for msg in self._messages:
+                    timestamp = time.strftime('%H:%M:%S', time.localtime(msg.timestamp))
+                    lines.append(f'[{timestamp}] {msg.role.upper()}: {msg.content}')
+                return '\n'.join(lines)
+            else:
+                return f"Unsupported format: {format}. Use 'json' or 'text'."
+        except Exception as e:
+            logger.error(f'Error exporting conversation: {e}')
+            return f'Export failed: {str(e)}'
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get conversation statistics with caching for performance"""
+        current_time = time.time()
+        if self._stats_cache is None or current_time - self._cache_timestamp > 1.0:
+            self._stats_cache = {'message_count': len(self._messages), 'session_duration': time.time() - self.session_start, 'user_messages': len([m for m in self._messages if m.role == 'user']), 'assistant_messages': len([m for m in self._messages if m.role == 'assistant'])}
+            self._cache_timestamp = current_time
+        return self._stats_cache
+
+class OpencodeBrain:
+
+    def __init__(self, config: Optional[Config]=None, skills: Optional[SkillRegistry]=None, llm_client: Optional[LLMClient]=None):
+        self.cfg = config or self._create_fallback_config()
+        self.skills = skills or self._create_fallback_skills()
+        self.history = ConversationHistory(max_messages=20)
+        self.model_switch_count = 0
+        self.optimizer = None
+        if SelfOptimizingConfig:
+            try:
+                self.optimizer = SelfOptimizingConfig(config)
+                optimized_config = self.optimizer.create_optimized_config()
+                self.cfg = optimized_config
+                logger.info('Self-optimizing configuration enabled')
+            except Exception as e:
+                logger.warning(f'Failed to initialize self-optimizing config: {e}')
+        try:
+            self.llm = llm_client or (LLMClient(self.cfg) if LLMClient else self._create_fallback_llm())
+        except Exception as e:
+            logger.warning(f'Error initializing LLM client: {e}')
+            self.llm = self._create_fallback_llm()
+        self.model_manager = None
+        if IntelligentModelManager and hasattr(self.llm, 'get_available_models'):
+            try:
+                self.model_manager = IntelligentModelManager(self.llm)
+                logger.info('Intelligent model manager initialized')
+            except Exception as e:
+                logger.warning(f'Failed to initialize intelligent model manager: {e}')
+
+    def _create_fallback_llm(self):
+        """Create fallback LLM client when real LLM is unavailable"""
+
+        class FallbackLLM:
+
+            def __init__(self, config):
+                self.config = config
+                self.current_model = f'{config.provider}/{config.model_name}'
+
+            def chat(self, messages: List[Dict[str, str]]) -> Any:
+
+                class MockResponse:
+
+                    def __init__(self):
+                        self.content = 'This is a fallback response from the LLM client.'
+                        self.model = 'fallback-model'
+                        self.provider = 'fallback'
+                        self.usage = {'prompt_tokens': 10, 'completion_tokens': 20}
+                return MockResponse()
+
+            def set_model(self, model: str):
+                self.current_model = model
+
+            def get_current_model(self) -> str:
+                return self.current_model
+
+            def get_available_models(self) -> List[str]:
+                return ['fallback/model1', 'fallback/model2', 'fallback/model3']
+        return FallbackLLM(self.cfg)
+        self.orchestrator = None
+        if ModelOrchestrator:
+            try:
+                self.orchestrator = ModelOrchestrator(self.cfg)
+                logger.info('Multi-model task orchestrator enabled')
+            except Exception as e:
+                logger.warning(f'Failed to initialize task orchestrator: {e}')
+        try:
+            self.opencode_model = get_current_opencode_model() if get_current_opencode_model else None
+            if self.opencode_model:
+                logger.info(f'OpencodeBrain initialized with Opencode model: {self.opencode_model}')
+            else:
+                logger.info('OpencodeBrain initialized with local configuration')
+        except Exception as e:
+            logger.warning(f'Error checking Opencode model: {e}')
+            self.opencode_model = None
+
+    def _create_fallback_config(self):
+        """Create fallback configuration when real config is unavailable"""
+
+        class FallbackConfig:
+
+            def __init__(self):
+                self.provider = 'fallback'
+                self.model_name = 'fallback-model'
+                self.opencode_model = None
+                self.api_endpoint = 'http://localhost:11434'
+                self.api_key = None
+                self.max_tokens = 1024
+                self.temperature = 0.7
+                self.system_prompt = None
+        return FallbackConfig()
+
+    def _create_fallback_skills(self):
+        """Create fallback skills registry when real skills are unavailable"""
+
+        class FallbackSkill:
+
+            def __init__(self, name: str, description: str):
+                self.name = name
+                self.description = description
+                self.example_usage = f'Example usage of {name}'
+
+            def execute(self, params: Dict[str, Any]) -> str:
+                return f'Fallback skill {self.name} executed with params: {params}'
+
+        class FallbackSkills:
+
+            def __init__(self):
+                self.skills = {'code_generation': FallbackSkill('Code Generation', 'Generates code snippets'), 'text_analysis': FallbackSkill('Text Analysis', 'Analyzes text content'), 'data_inspector': FallbackSkill('Data Inspector', 'Inspects data files'), 'file_manager': FallbackSkill('File Manager', 'Manages files'), 'web_search': FallbackSkill('Web Search', 'Searches the web'), 'minimax_agent': FallbackSkill('MiniMax Agent', 'Advanced reasoning agent')}
+
+            def get(self, name: str):
+                return self.skills.get(name, FallbackSkill('Unknown', 'Unknown skill'))
+        return FallbackSkills()
+
+    def parse_intent(self, text: str) -> Dict[str, str]:
+        """Enhanced intent parsing with MiniMax Agent and multi-model support and error handling"""
+        try:
+            if not text or not isinstance(text, str):
+                return {'intent': 'chat'}
+            lowered = text.lower().strip()
+            if lowered.startswith('/model') or 'switch model' in lowered or 'change model' in lowered:
+                return {'intent': 'model_switch', 'action': 'switch_model'}
+            if any((word in lowered for word in ['parallel', 'multiple', 'delegate', 'collaborate', 'multi-model', 'orchestrate'])):
+                return {'intent': 'multi_model', 'action': 'parallel_execution'}
+            skill_patterns = [(['minimax', 'reasoning', 'analyze', 'generate', 'think'], 'minimax_agent'), (['train', 'model', 'simulate', 'recommend', 'ml'], 'ml_training'), (['sentiment', 'analyze', 'moderate', 'toxic', 'text'], 'text_analysis'), (['csv', 'json', 'data', 'summary', 'stats', 'inspect'], 'data_inspector'), (['code', 'python', 'generate', 'snippet', 'explain', 'programming'], 'code_generation'), (['file', 'manage', 'organize', 'directory'], 'file_manager'), (['search', 'web', 'internet', 'find'], 'web_search')]
+            for (patterns, skill) in skill_patterns:
+                if any((word in lowered for word in patterns)):
+                    return {'intent': 'skill', 'skill': skill}
+            return {'intent': 'chat'}
+        except Exception as e:
+            logger.error(f'Error parsing intent: {e}')
+            return {'intent': 'chat'}
+
+    def route_to_skill(self, skill_name: str, text: str, context: Optional[Dict]=None) -> Dict:
+        """Enhanced skill routing with context support"""
+        try:
+            skill = self.skills.get(skill_name)
+            params = {'text': text}
+            if context:
+                params.update(context)
+            result = skill.execute(params)
+            return {'chosen_skill': skill_name, 'meta': {'description': skill.description, 'example': skill.example_usage, 'parameters': getattr(skill, 'parameters', {})}, 'output': result, 'reasoning': f"Chose skill '{skill_name}' due to detected keywords and context analysis."}
+        except Exception as e:
+            logger.error(f'Skill routing failed for {skill_name}: {e}')
+            return {'error': f'Skill routing failed: {e}'}
+
+    def handle_model_switch(self, text: str) -> str:
+        """Handle model switching requests"""
+        if text.startswith('/model'):
+            parts = text.split(None, 1)
+            if len(parts) > 1:
+                new_model = parts[1].strip()
+                return self.switch_model(new_model)
+            else:
+                return self.show_available_models()
+        else:
+            return 'Model switching format: /model <provider/model>'
+
+    def switch_model(self, model: str) -> str:
+        """Switch to a different model with enhanced error handling"""
+        try:
+            self.llm.set_model(model)
+            self.model_switch_count += 1
+            if hasattr(self.cfg, 'opencode_model'):
+                self.cfg.opencode_model = model
+                if '/' in model:
+                    (provider, model_name) = model.split('/', 1)
+                    self.cfg.provider = provider
+                    self.cfg.model_name = model_name
+            logger.info(f'Model switched to: {model}')
+            return f'Model switched to: {model}'
+        except Exception as e:
+            error_msg = f'Failed to switch model: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+
+    def show_available_models(self) -> str:
+        """Show available models with error handling"""
+        try:
+            models = self.llm.get_available_models()
+            current = self.llm.get_current_model()
+            if not models:
+                return 'No models available. Please configure your LLM provider.'
+            result = [f'Available Models (current: {current}):\n']
+            for model in models[:10]:
+                marker = '-> ' if model == current else '   '
+                result.append(f'{marker}{model}')
+            if len(models) > 10:
+                result.append(f'... and {len(models) - 10} more')
+            result.append(f"\nUse '/model {(models[0] if models else 'provider/model')}' to switch")
+            return '\n'.join(result)
+        except Exception as e:
+            logger.error(f'Error showing available models: {e}')
+            return f'Error getting available models: {e}'
+
+    def send_message(self, text: str, context: Optional[Dict]=None) -> str:
+        """Enhanced message processing with Opencode integration"""
+        self.history.add('user', text)
+        intent = self.parse_intent(text)
+        if intent.get('intent') == 'model_switch':
+            response = self.handle_model_switch(text)
+            self.history.add('assistant', response)
+            return response
+        if intent.get('intent') == 'multi_model':
+            response = self.handle_multi_model_request(text)
+            self.history.add('assistant', response)
+            return response
+        if intent.get('intent') == 'skill' and intent.get('skill'):
+            skill_name = intent['skill']
+            result = self.route_to_skill(skill_name, text, context)
+            self.history.add('assistant', f'[Skill:{skill_name}] {result}')
+            return f"[Neo Reasoning] {result['reasoning']}\n\n[Skill Output]\n{result['output']}"
+        if intent.get('intent') == 'minimax' and intent.get('skill') == 'minimax_agent':
+            try:
+                minimax_skill = self.skills.get('minimax_agent')
+                result = minimax_skill.execute({'text': text, 'context': context})
+                self.history.add('assistant', f'[MiniMax Agent] {result}')
+                return f'[MiniMax Agent] {result}'
+            except Exception as e:
+                error_msg = f'MiniMax Agent error: {str(e)}'
+                logger.error(error_msg)
+                return error_msg
+        try:
+            messages = self.history.to_list()
+            if not messages:
+                return 'No conversation history available.'
+            response = self.llm.chat(messages)
+            self.history.add('assistant', response.content)
+            model_info = f' ({response.provider}/{response.model})' if hasattr(response, 'provider') and response.provider != 'error' else ''
+            return response.content + model_info
+        except AttributeError as e:
+            error_msg = f'[Neo Error] LLM client not properly initialized: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+        except ConnectionError as e:
+            error_msg = f'[Neo Error] Connection failed: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+        except TimeoutError as e:
+            error_msg = f'[Neo Error] Request timed out: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+        except Exception as e:
+            error_msg = f'[Neo Error] LLM request failed: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get brain status including Opencode integration info with error handling"""
+        try:
+            current_model = self.llm.get_current_model()
+            status = {'current_model': current_model, 'provider': getattr(self.cfg, 'provider', 'unknown'), 'model_name': getattr(self.cfg, 'model_name', 'unknown'), 'opencode_model': getattr(self.cfg, 'opencode_model', None) or self.opencode_model, 'is_opencode_available': (getattr(self.cfg, 'opencode_model', None) or self.opencode_model) is not None, 'model_switches': self.model_switch_count, 'conversation_stats': self.history.get_stats(), 'available_skills': list(self.skills.skills.keys()) if hasattr(self.skills, 'skills') else [], 'config_source': 'opencode' if getattr(self.cfg, 'opencode_model', None) or self.opencode_model else 'local/fallback', 'status': 'operational'}
+            if self.model_manager:
+                model_status = self.model_manager.get_model_status()
+                status.update({'intelligent_delegation': 'enabled', 'validated_models': model_status['validated_models'], 'total_models': model_status['total_models'], 'available_task_types': model_status['available_task_types']})
+            else:
+                status['intelligent_delegation'] = 'disabled'
+            return status
+        except Exception as e:
+            logger.error(f'Error getting status: {e}')
+            return {'status': 'error', 'error': str(e), 'current_model': 'unknown', 'provider': 'unknown'}
+
+    def intelligent_delegate(self, prompt: str, preferred_model: Optional[str]=None) -> str:
+        """Intelligently delegate task to the best model"""
+        if not self.model_manager:
+            return self.send_message(prompt)
+        try:
+            result = self.model_manager.delegate_task(prompt, preferred_model)
+            if result.success:
+                response = f'🤖 [Intelligent Delegation]\n\n'
+                response += f'Task Type: {result.task_type.value}\n'
+                response += f'Model Used: {result.model_used}\n'
+                response += f'Performance Score: {result.performance_score:.2f}\n'
+                response += f'Execution Time: {result.execution_time:.2f}s\n\n'
+                response += f'📋 [Response]\n{result.response.content}'
+                self.history.add('assistant', response)
+                return response
+            else:
+                error_msg = f'❌ Intelligent delegation failed: {result.error_message}'
+                logger.error(error_msg)
+                return error_msg
+        except Exception as e:
+            error_msg = f'❌ Intelligent delegation error: {str(e)}'
+            logger.error(error_msg)
+            return error_msg
+
+    def get_model_recommendations(self, task_description: str) -> str:
+        """Get model recommendations for a specific task"""
+        if not self.model_manager:
+            return 'Intelligent model manager not available'
+        try:
+            task_type = self.model_manager.classify_task(task_description)
+            best_model = self.model_manager.select_best_model(task_type)
+            if not best_model:
+                return 'No suitable model found for this task'
+            candidates = []
+            for (model_name, capability) in self.model_manager.model_capabilities.items():
+                if task_type in capability.task_types and capability.availability:
+                    score = capability.performance_score(task_type)
+                    candidates.append((model_name, score))
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            top_3 = candidates[:3]
+            response = f'🎯 [Model Recommendations for: {task_type.value}]\n\n'
+            response += f'🥇 Best: {top_3[0][0]} (Score: {top_3[0][1]:.2f})\n'
+            if len(top_3) > 1:
+                response += f'🥈 Alternative: {top_3[1][0]} (Score: {top_3[1][1]:.2f})\n'
+            if len(top_3) > 2:
+                response += f'🥉 Alternative: {top_3[2][0]} (Score: {top_3[2][1]:.2f})\n'
+            response += f'\n💡 Use: /model {top_3[0][0]} to switch to the best model'
+            return response
+        except Exception as e:
+            return f'Error getting recommendations: {str(e)}'
+
+    def handle_multi_model_request(self, text: str) -> str:
+        """Handle requests for multi-model parallel execution"""
+        if not self.orchestrator:
+            return 'Multi-model orchestration is not available. Please check the task orchestrator configuration.'
+        lowered = text.lower()
+        if 'collaborative' in lowered or 'design' in lowered:
+            return self._handle_collaborative_task(text)
+        elif 'parallel' in lowered or 'multiple' in lowered:
+            return self._handle_parallel_tasks(text)
+        else:
+            return self._show_multi_model_capabilities()
+
+    def _handle_collaborative_task(self, text: str) -> str:
+        """Handle collaborative multi-model tasks"""
+        main_task = text.replace('collaborative', '').replace('design', '').strip()
+        if not main_task:
+            return "Please specify what collaborative task you'd like the models to work on."
+        sub_tasks = self._generate_sub_tasks_for_collaborative_work(main_task)
+        try:
+            result = self.orchestrator.collaborative_task_execution(main_task, sub_tasks)
+            response = f'🤝 [Multi-Model Collaboration Complete]\n\n'
+            response += f'Main Task: {main_task}\n\n'
+            response += f'Sub-tasks completed by different models:\n'
+            for (i, sub_result) in enumerate(result['sub_results']):
+                response += f'  • {sub_tasks[i]} ({sub_result.model_used})\n'
+            response += f"\nTotal execution time: {result['execution_time']:.2f}s\n\n"
+            response += f"📋 [Synthesized Result]\n{result['combined_response']}"
+            return response
+        except Exception as e:
+            return f'Collaborative task failed: {e}'
+
+    def _handle_parallel_tasks(self, text: str) -> str:
+        """Handle parallel task execution"""
+        tasks = self._parse_parallel_tasks_from_request(text)
+        if not tasks:
+            return 'Could not parse parallel tasks from your request. Please be more specific.'
+        try:
+            results = self.orchestrator.execute_task_parallel(tasks)
+            response = f'⚡ [Parallel Execution Complete - {len(results)} tasks]\n\n'
+            for result in results:
+                status = '✅' if result.success else '❌'
+                response += f'{status} Task: {result.task_id}\n'
+                response += f'   Model: {result.model_used}\n'
+                response += f'   Time: {result.execution_time:.2f}s\n'
+                response += f'   Result: {result.response.content[:200]}...\n\n'
+            return response
+        except Exception as e:
+            return f'Parallel execution failed: {e}'
+
+    def _generate_sub_tasks_for_collaborative_work(self, main_task: str) -> List[str]:
+        """Generate appropriate sub-tasks for collaborative work"""
+        task_lower = main_task.lower()
+        if 'app' in task_lower or 'application' in task_lower:
+            return ['Design the user interface and user experience', 'Plan the technical architecture and backend systems', 'Suggest key features for functionality and user value', 'Consider security and performance requirements']
+        elif 'code' in task_lower or 'program' in task_lower:
+            return ['Design the overall architecture and structure', 'Implement the core functionality', 'Add error handling and edge cases', 'Write documentation and comments']
+        elif 'analyze' in task_lower or 'research' in task_lower:
+            return ['Gather and summarize relevant information', 'Analyze different perspectives and viewpoints', 'Identify key insights and patterns', 'Provide recommendations and conclusions']
+        else:
+            return ['Provide a comprehensive overview and context', 'Analyze the key components and requirements', 'Suggest implementation approaches and solutions', 'Consider potential challenges and limitations']
+
+    def _parse_parallel_tasks_from_request(self, text: str) -> List[Task]:
+        """Parse parallel tasks from user request"""
+        import re
+        lines = text.split('\n')
+        tasks = []
+        for (i, line) in enumerate(lines):
+            line = line.strip()
+            if re.match('^\\d+\\.|\\*|-|•', line) or any((word in line.lower() for word in ['task', 'do', 'create', 'write', 'analyze'])):
+                if len(line) > 10:
+                    task = Task(id=f'parallel_task_{i}', description=f'Parallel task {i + 1}', prompt=line.lstrip('1234567890.*-• ').strip())
+                    tasks.append(task)
+        if not tasks and len(text) > 20:
+            base_prompt = text.replace('parallel', '').replace('multiple', '').strip()
+            tasks = [Task(id='task_1', description='First approach', prompt=f'Approach 1: {base_prompt}'), Task(id='task_2', description='Second approach', prompt=f'Approach 2: {base_prompt}'), Task(id='task_3', description='Third approach', prompt=f'Approach 3: {base_prompt}')]
+        return tasks
+
+    def _show_multi_model_capabilities(self) -> str:
+        """Show available multi-model capabilities"""
+        capabilities = '\n🎯 [Multi-Model Capabilities Available]\n\nNeo-Clone can now orchestrate multiple AI models simultaneously:\n\n🔄 PARALLEL EXECUTION:\n  • Run multiple tasks at the same time across different models\n  • Example: "Execute these 3 tasks in parallel: [task1, task2, task3]"\n\n🤝 COLLABORATIVE TASKS:\n  • Break complex tasks into sub-tasks for different models\n  • Models work together and results are synthesized\n  • Example: "Collaboratively design a mobile app"\n\n📊 AVAILABLE MODELS:\n  • opencode/big-pickle (General purpose, free)\n  • opencode/grok-code (Code generation, free)\n  • gemini/gemini-2.5-flash-lite (Fast analysis, free)\n  • gemini/gemini-2.5-flash (Creative tasks, free)\n  • openai/gpt-3.5-turbo (General purpose, free tier)\n\n💡 USAGE EXAMPLES:\n  • "Use multiple models to design a web application"\n  • "Parallel: analyze this code, write tests, create documentation"\n  • "Collaborative: plan a machine learning project"\n\nTry asking for parallel execution or collaborative tasks!\n        '
+        return capabilities
+
+    def get_multi_model_status(self) -> Dict[str, Any]:
+        """Get status of multi-model capabilities"""
+        if not self.orchestrator:
+            return {'multi_model_enabled': False, 'error': 'Task orchestrator not initialized'}
+        try:
+            capabilities = self.orchestrator.get_model_capabilities()
+            return {'multi_model_enabled': True, 'available_models': len(capabilities), 'working_models': len([m for m in capabilities.values() if m.get('working', False)]), 'model_details': capabilities}
+        except Exception as e:
+            return {'multi_model_enabled': False, 'error': str(e)}
+
+    def clear_history(self):
+        """Clear conversation history"""
+        self.history.clear()
+
+class Brain(OpencodeBrain):
+    """Backward compatible Brain class"""
+    pass

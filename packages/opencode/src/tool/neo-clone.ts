@@ -11,15 +11,56 @@ const MAX_OUTPUT_LENGTH = 50_000
 const DEFAULT_TIMEOUT = 5 * 60 * 1000 // 5 minutes for AI processing
 
 export const NeoCloneTool = Tool.define("neo-clone", {
-  description: "Execute queries using the Neo-Clone AI assistant system. Neo-Clone is a Python-based AI assistant with enhanced capabilities including multiple skills, memory system, and intelligent reasoning.",
+  description:
+    "Execute queries using the Neo-Clone AI assistant system. Neo-Clone is a Python-based AI assistant with enhanced capabilities including multiple skills, memory system, and intelligent reasoning.",
   parameters: z.object({
     message: z.string().describe("The message or query to send to Neo-Clone"),
-    mode: z.enum(["cli", "direct"]).default("cli").describe("Mode to run Neo-Clone in: 'cli' for interactive mode, 'direct' for direct brain integration"),
+    mode: z
+      .enum(["cli", "direct"])
+      .default("cli")
+      .describe("Mode to run Neo-Clone in: 'cli' for interactive mode, 'direct' for direct brain integration"),
     timeout: z.number().default(DEFAULT_TIMEOUT).describe("Timeout in milliseconds"),
   }),
   async execute(params, ctx) {
     const neoClonePath = `${Instance.directory}/neo-clone`
-    const pythonCmd = process.platform === "win32" ? "python" : "python3"
+
+    // Find working Python executable
+    let pythonCmd: string
+    try {
+      const candidates = process.platform === "win32" ? ["py", "python"] : ["python3", "python"]
+      for (const candidate of candidates) {
+        try {
+          const result = await $`${candidate} --version`.quiet()
+          if (result.exitCode === 0) {
+            pythonCmd = candidate
+            break
+          }
+        } catch {
+          continue
+        }
+      }
+      if (!pythonCmd) {
+        throw new Error("Python not found")
+      }
+    } catch (error) {
+      pythonCmd = process.platform === "win32" ? "py" : "python3"
+    }
+
+    // Try to find Python executable
+    async function findPython(): Promise<string> {
+      const candidates = process.platform === "win32" ? ["py", "python"] : ["python3", "python"]
+      for (const candidate of candidates) {
+        try {
+          const result = await $`${candidate} --version`.quiet()
+          if (result.exitCode === 0) {
+            return candidate
+          }
+        } catch {
+          continue
+        }
+      }
+      throw new Error("Python not found")
+    }
 
     let command: string
 
@@ -70,15 +111,13 @@ export const NeoCloneTool = Tool.define("neo-clone", {
         })
       } else {
         // For direct mode, run the test script
-        const result = await $`${pythonCmd} test_direct_integration.py`
-          .cwd(neoClonePath)
-          .quiet()
+        const result = await $`${pythonCmd} test_direct_integration.py`.cwd(neoClonePath).quiet()
 
         output = result.text()
       }
 
       // Clean up output (remove emojis that might cause issues)
-      output = output.replace(/[🤖🛠️📊🎨💻📝📊🤖🔧💬🎨🔍🏗️💻🚀]/g, '')
+      output = output.replace(/[🤖🛠️📊🎨💻📝📊🤖🔧💬🎨🔍🏗️💻🚀]/g, "")
 
       // Truncate if too long
       if (output.length > MAX_OUTPUT_LENGTH) {
@@ -102,7 +141,6 @@ export const NeoCloneTool = Tool.define("neo-clone", {
         },
         output: output.trim(),
       }
-
     } catch (error) {
       const err = error as Error
       log.error("Neo-Clone execution failed", { error: err.message, mode: params.mode })

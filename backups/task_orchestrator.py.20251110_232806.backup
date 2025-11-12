@@ -1,0 +1,173 @@
+from functools import lru_cache
+'\ntask_orchestrator.py - Multi-model task orchestration for Neo-Clone\n\nEnables parallel processing and task delegation across multiple LLM providers\n(OpenCode, Gemini CLI, OpenAI, etc.) for enhanced capabilities and efficiency.\n'
+import asyncio
+import logging
+import time
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from config_opencode import Config, load_config
+from llm_client_opencode import OpencodeLLMClient, LLMResponse
+logger = logging.getLogger(__name__)
+
+@dataclass
+class Task:
+    """Represents a task that can be delegated to a model"""
+    id: str
+    description: str
+    prompt: str
+    model_preference: Optional[str] = None
+    priority: int = 1
+    dependencies: List[str] = None
+    context: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.dependencies is None:
+            self.dependencies = []
+        if self.context is None:
+            self.context = {}
+
+@dataclass
+class TaskResult:
+    """Result from executing a task"""
+    task_id: str
+    model_used: str
+    response: LLMResponse
+    execution_time: float
+    success: bool
+    error_message: Optional[str] = None
+
+class ModelOrchestrator:
+    """Orchestrates multiple LLM models for parallel task execution"""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self.clients = {}
+        self.executor = ThreadPoolExecutor(max_workers=4)
+
+    def get_client_for_model(self, model_name: str) -> OpencodeLLMClient:
+        """Get or create a client for a specific model"""
+        if model_name not in self.clients:
+            client = OpencodeLLMClient(self.config)
+            client.set_model(model_name)
+            self.clients[model_name] = client
+        return self.clients[model_name]
+
+    def execute_task_parallel(self, tasks: List[Task]) -> List[TaskResult]:
+        """Execute multiple tasks in parallel across different models"""
+        logger.info(f'Executing {len(tasks)} tasks in parallel')
+        futures = []
+        for task in tasks:
+            future = self.executor.submit(self._execute_single_task, task)
+            futures.append(future)
+        results = []
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                results.append(result)
+                logger.info(f'Task {result.task_id} completed with {result.model_used}')
+            except Exception as e:
+                logger.error(f'Task execution failed: {e}')
+                error_result = TaskResult(task_id='unknown', model_used='error', response=LLMResponse(content=f'Task failed: {e}', model='error', provider='error'), execution_time=0.0, success=False, error_message=str(e))
+                results.append(error_result)
+        return results
+
+    def _execute_single_task(self, task: Task) -> TaskResult:
+        """Execute a single task with appropriate model selection"""
+        start_time = time.time()
+        try:
+            model_name = self._select_model_for_task(task)
+            client = self.get_client_for_model(model_name)
+            messages = [{'role': 'user', 'content': task.prompt}]
+            response = client.chat(messages, timeout=30)
+            execution_time = time.time() - start_time
+            return TaskResult(task_id=task.id, model_used=model_name, response=response, execution_time=execution_time, success=not response.content.startswith('['), error_message=None)
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return TaskResult(task_id=task.id, model_used='error', response=LLMResponse(content=f'Task failed: {e}', model='error', provider='error'), execution_time=execution_time, success=False, error_message=str(e))
+
+    def _select_model_for_task(self, task: Task) -> str:
+        """Select the best model for a given task"""
+        if task.model_preference:
+            return task.model_preference
+        prompt_lower = task.prompt.lower()
+        if any((word in prompt_lower for word in ['code', 'python', 'javascript', 'programming', 'function', 'debug'])):
+            return 'opencode/grok-code'
+        if any((word in prompt_lower for word in ['write', 'creative', 'story', 'poem', 'design'])):
+            return 'gemini/gemini-2.5-flash'
+        if any((word in prompt_lower for word in ['analyze', 'explain', 'reason', 'think', 'understand'])):
+            return 'gemini/gemini-2.5-flash-lite'
+        return 'opencode/big-pickle'
+
+    @lru_cache(maxsize=128)
+    def execute_sequential_with_dependencies(self, tasks: List[Task]) -> List[TaskResult]:
+        """Execute tasks sequentially, respecting dependencies"""
+        logger.info(f'Executing {len(tasks)} tasks sequentially with dependencies')
+        task_map = {task.id: task for task in tasks}
+        completed = {}
+        results = []
+        remaining_tasks = tasks.copy()
+        while remaining_tasks:
+            ready_tasks = []
+            for task in remaining_tasks:
+                deps_satisfied = all((dep in completed for dep in task.dependencies))
+                if deps_satisfied:
+                    ready_tasks.append(task)
+            if not ready_tasks:
+                logger.error('Circular dependency detected or unsatisfied dependencies')
+                break
+            batch_results = self.execute_task_parallel(ready_tasks)
+            results.extend(batch_results)
+            for result in batch_results:
+                completed[result.task_id] = result
+                remaining_tasks = [t for t in remaining_tasks if t.id != result.task_id]
+        return results
+
+    def collaborative_task_execution(self, main_task: str, sub_tasks: List[str]) -> Dict[str, Any]:
+        """Execute a main task by breaking it into collaborative sub-tasks"""
+        logger.info(f'Executing collaborative task: {main_task}')
+        tasks = []
+        for (i, sub_task) in enumerate(sub_tasks):
+            task = Task(id=f'sub_{i}', description=f'Sub-task {i + 1}', prompt=f'{main_task}\n\nSpecifically: {sub_task}', priority=2)
+            tasks.append(task)
+        sub_results = self.execute_task_parallel(tasks)
+        combined_response = self._combine_collaborative_results(main_task, sub_results)
+        return {'main_task': main_task, 'sub_tasks': sub_tasks, 'sub_results': sub_results, 'combined_response': combined_response, 'execution_time': sum((r.execution_time for r in sub_results))}
+
+    def _combine_collaborative_results(self, main_task: str, sub_results: List[TaskResult]) -> str:
+        """Combine results from multiple collaborative sub-tasks"""
+        synthesis_prompt = f"\n        Main Task: {main_task}\n\n        I have results from multiple AI models working on different aspects:\n\n        {chr(10).join([f'Model {r.model_used}: {r.response.content[:500]}...' + chr(10) + chr(10) for r in sub_results])}\n\n        Please synthesize these results into a comprehensive, coherent response.\n        "
+        synthesis_task = Task(id='synthesis', description='Synthesize collaborative results', prompt=synthesis_prompt, model_preference='gemini/gemini-2.5-flash')
+        synthesis_result = self._execute_single_task(synthesis_task)
+        return synthesis_result.response.content
+
+    def get_model_capabilities(self) -> Dict[str, Dict[str, Any]]:
+        """Get capabilities and performance info for available models"""
+        client = OpencodeLLMClient(self.config)
+        models = client.get_available_models()
+        capabilities = {}
+        for model in models[:10]:
+            try:
+                test_prompt = "Respond with exactly 'CAPABLE' if you can understand this message."
+                client.set_model(model)
+                response = client.chat([{'role': 'user', 'content': test_prompt}], timeout=10)
+                capabilities[model] = {'available': True, 'response_time': response.response_time, 'provider': response.provider, 'working': 'CAPABLE' in response.content.upper()}
+            except Exception as e:
+                capabilities[model] = {'available': False, 'error': str(e)}
+        return capabilities
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    config = load_config()
+    orchestrator = ModelOrchestrator(config)
+    tasks = [Task(id='task1', description='Code generation', prompt='Write a Python function to calculate fibonacci numbers'), Task(id='task2', description='Creative writing', prompt='Write a short poem about artificial intelligence'), Task(id='task3', description='Analysis', prompt='Explain how machine learning works in simple terms')]
+    print('Testing parallel task execution...')
+    results = orchestrator.execute_task_parallel(tasks)
+    for result in results:
+        print(f'\nTask {result.task_id}:')
+        print(f'  Model: {result.model_used}')
+        print(f'  Time: {result.execution_time:.2f}s')
+        print(f'  Success: {result.success}')
+        print(f'  Response: {result.response.content[:100]}...')
+    print('\n\nTesting collaborative task execution...')
+    collab_result = orchestrator.collaborative_task_execution(main_task='Design a mobile app for task management', sub_tasks=['Design the user interface and user experience', 'Plan the technical architecture and backend', 'Suggest features for productivity and collaboration'])
+    print(f"Collaborative result: {collab_result['combined_response'][:200]}...")

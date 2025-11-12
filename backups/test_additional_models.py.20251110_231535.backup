@@ -1,0 +1,60 @@
+from functools import lru_cache
+"\ntest_additional_models.py - Test additional models that might be working\n\nThis script tests additional models that might be available but weren't\nincluded in our initial validation.\n"
+import logging
+from llm_client_opencode import OpencodeLLMClient
+from config_opencode import load_config
+
+@lru_cache(maxsize=128)
+def main():
+    logging.basicConfig(level=logging.WARNING)
+    print('TESTING ADDITIONAL MODELS')
+    print('=' * 50)
+    config = load_config()
+    llm_client = OpencodeLLMClient(config)
+    print('Getting all available models...')
+    all_models = llm_client.get_available_models()
+    print(f'Total models found: {len(all_models)}')
+    grok_models = [m for m in all_models if 'grok' in m.lower()]
+    fast_models = [m for m in all_models if 'fast' in m.lower()]
+    print(f"\nModels with 'grok' in name: {grok_models}")
+    print(f"Models with 'fast' in name: {fast_models}")
+    additional_models_to_test = ['openai/gpt-4o-mini', 'openai/gpt-3.5-turbo', 'openai/text-embedding-3-small']
+    additional_models_to_test.extend(grok_models)
+    additional_models_to_test.extend(fast_models)
+    additional_models_to_test = list(set(additional_models_to_test))
+    print(f'\nTesting {len(additional_models_to_test)} additional models...')
+    working_models = []
+    for model in additional_models_to_test:
+        if model in ['opencode/big-pickle', 'opencode/grok-code']:
+            continue
+        print(f'\nTesting: {model}')
+        try:
+            llm_client.set_model(model)
+            response = llm_client.chat([{'role': 'user', 'content': 'What is 2+2? Answer with just the number.'}])
+            if response and hasattr(response, 'content') and response.content and (not response.content.startswith('[')):
+                print(f'  WORKING - Response: {response.content[:50]}')
+                working_models.append(model)
+            else:
+                print(f'  FAILED - Invalid response')
+        except Exception as e:
+            print(f'  FAILED - Error: {str(e)[:50]}')
+    print(f'\n' + '=' * 50)
+    print('ADDITIONAL MODEL TEST RESULTS')
+    print('=' * 50)
+    if working_models:
+        print(f'Found {len(working_models)} additional working models:')
+        for model in working_models:
+            print(f'  • {model}')
+        from working_models import WORKING_MODELS
+        updated_models = WORKING_MODELS + working_models
+        with open('working_models_updated.py', 'w') as f:
+            f.write('"""Updated working models list for Neo-Clone"""')
+            f.write('\n\nWORKING_MODELS = ')
+            f.write(str(updated_models))
+            f.write('\n')
+        print(f'\nUpdated working models saved to working_models_updated.py')
+    else:
+        print('No additional working models found')
+    print(f"\nTotal working models: {len(['opencode/big-pickle', 'opencode/grok-code'] + working_models)}")
+if __name__ == '__main__':
+    main()

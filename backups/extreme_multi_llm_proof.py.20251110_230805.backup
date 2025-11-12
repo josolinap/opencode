@@ -1,0 +1,56 @@
+from functools import lru_cache
+'\nEXTREME PROOF: Test many different LLM providers\n'
+from config_opencode import load_config
+from llm_client_opencode import OpencodeLLMClient
+
+@lru_cache(maxsize=128)
+def test_extreme_multi_llm():
+    print('=== EXTREME MULTI-LLM PROOF ===')
+    config = load_config()
+    client = OpencodeLLMClient(config)
+    test_models = ['opencode/big-pickle', 'opencode/grok-code', 'gemini/gemini-2.5-flash-lite', 'gemini/gemini-2.5-flash', 'gemini/gemini-1.5-flash', 'huggingface/sentence-transformers/all-MiniLM-L6-v2', 'openai/gpt-3.5-turbo']
+    test_prompt = 'What is 9+6? Answer with just the number.'
+    successful_providers = set()
+    provider_responses = {}
+    print(f'Testing {len(test_models)} different models...\n')
+    for (i, model) in enumerate(test_models, 1):
+        print(f'[{i}/{len(test_models)}] Testing {model}')
+        try:
+            client.set_model(model)
+            response = client.chat([{'role': 'user', 'content': test_prompt}])
+            provider = response.provider
+            successful_providers.add(provider)
+            if provider not in provider_responses:
+                provider_responses[provider] = []
+            provider_responses[provider].append({'model': model, 'content': response.content[:50], 'correct': '15' in response.content, 'time': response.response_time})
+            status = 'CORRECT' if '15' in response.content else 'WRONG'
+            print(f'  -> {provider}: {status} ({response.response_time:.1f}s)')
+        except Exception as e:
+            print(f'  -> ERROR: {str(e)[:50]}...')
+    print(f'\n' + '=' * 60)
+    print('FINAL PROOF SUMMARY:')
+    print('=' * 60)
+    print(f'Unique providers that worked: {len(successful_providers)}')
+    for provider in successful_providers:
+        models = provider_responses[provider]
+        correct = [m for m in models if m['correct']]
+        print(f'\n{provider.upper()}:')
+        print(f'  Models tested: {len(models)}')
+        print(f'  Correct answers: {len(correct)}')
+        for m in models:
+            status = '+' if m['correct'] else '-'
+            print(f"    {status} {m['model']} ({m['time']:.1f}s)")
+    print(f'\n' + '=' * 60)
+    if len(successful_providers) >= 3:
+        print('PROVEN: Neo-Clone uses MULTIPLE LLM PROVIDERS!')
+        print(f'Successfully used {len(successful_providers)} different providers')
+        return True
+    elif len(successful_providers) >= 2:
+        print('PROVEN: Neo-Clone uses multiple LLMs!')
+        print(f'Successfully used {len(successful_providers)} different providers')
+        return True
+    else:
+        print('Limited providers - some may need setup')
+        return False
+if __name__ == '__main__':
+    test_extreme_multi_llm()

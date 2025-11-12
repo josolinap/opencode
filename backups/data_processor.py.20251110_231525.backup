@@ -1,0 +1,124 @@
+import csv
+import json
+import os
+from collections import defaultdict, Counter
+from typing import List, Dict, Any, Callable, Union
+from rich.console import Console
+from rich.table import Table
+from functools import lru_cache
+
+class DataProcessor:
+
+    def __init__(self, data: List[Dict[str, Any]]=None):
+        self.data = data or []
+        self.console = Console()
+
+    def load_from_csv(self, file_path: str, delimiter: str=',') -> None:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f'File {file_path} not found')
+        with open(file_path, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter=delimiter)
+            self.data = [row for row in reader]
+
+    def load_from_json(self, file_path: str) -> None:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f'File {file_path} not found')
+        with open(file_path, 'r', encoding='utf-8') as f:
+            self.data = json.load(f)
+
+    def clean_data(self, remove_duplicates: bool=True, remove_empty: bool=True) -> None:
+        if remove_empty:
+            self.data = [row for row in self.data if all((v.strip() for v in row.values() if isinstance(v, str)))]
+        if remove_duplicates:
+            seen = set()
+            unique_data = []
+            for row in self.data:
+                row_tuple = tuple(sorted(row.items()))
+                if row_tuple not in seen:
+                    seen.add(row_tuple)
+                    unique_data.append(row)
+            self.data = unique_data
+
+    def transform_data(self, transformations: Dict[str, Callable[[Any], Any]]) -> None:
+        for row in self.data:
+            for (col, func) in transformations.items():
+                if col in row:
+                    row[col] = func(row[col])
+
+    def filter_data(self, condition: Callable[[Dict[str, Any]], bool]) -> None:
+        self.data = [row for row in self.data if condition(row)]
+
+    @lru_cache(maxsize=128)
+    def analyze_data(self) -> Dict[str, Any]:
+        if not self.data:
+            return {}
+        analysis = {'count': len(self.data)}
+        numeric_cols = {}
+        for row in self.data:
+            for (k, v) in row.items():
+                try:
+                    num_v = float(v)
+                    if k not in numeric_cols:
+                        numeric_cols[k] = []
+                    numeric_cols[k].append(num_v)
+                except (ValueError, TypeError):
+                    pass
+        for (col, values) in numeric_cols.items():
+            analysis[f'{col}_mean'] = sum(values) / len(values)
+            analysis[f'{col}_min'] = min(values)
+            analysis[f'{col}_max'] = max(values)
+        return analysis
+
+    def group_by(self, key: str) -> Dict[Any, List[Dict[str, Any]]]:
+        groups = defaultdict(list)
+        for row in self.data:
+            groups[row.get(key)].append(row)
+        return dict(groups)
+
+    def pivot(self, index: str, columns: str, values: str, agg_func: Callable[[List[Any]], Any]=sum) -> Dict[Any, Dict[Any, Any]]:
+        groups = self.group_by(index)
+        pivot_data = {}
+        for (idx_val, rows) in groups.items():
+            pivot_data[idx_val] = {}
+            sub_groups = defaultdict(list)
+            for row in rows:
+                sub_groups[row.get(columns)].append(row.get(values))
+            for (col_val, vals) in sub_groups.items():
+                try:
+                    numeric_vals = [float(v) for v in vals if v is not None]
+                    pivot_data[idx_val][col_val] = agg_func(numeric_vals) if numeric_vals else None
+                except (ValueError, TypeError):
+                    pivot_data[idx_val][col_val] = agg_func(vals) if vals else None
+        return pivot_data
+
+    def save_to_csv(self, file_path: str, delimiter: str=',') -> None:
+        if not self.data:
+            return
+        with open(file_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=self.data[0].keys(), delimiter=delimiter)
+            writer.writeheader()
+            writer.writerows(self.data)
+
+    def save_to_json(self, file_path: str) -> None:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, indent=2)
+
+    def display_data(self, limit: int=10) -> None:
+        if not self.data:
+            self.console.print('No data to display')
+            return
+        table = Table(title='Data Preview')
+        for col in self.data[0].keys():
+            table.add_column(col, justify='left')
+        for row in self.data[:limit]:
+            table.add_row(*[str(v) for v in row.values()])
+        self.console.print(table)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        return self.data[index]
+
+    def __iter__(self):
+        return iter(self.data)

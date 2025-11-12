@@ -1,0 +1,434 @@
+from functools import lru_cache
+'\nenhanced_opencode_integration.py - Enhanced Opencode Integration with Dynamic Model Switching\n\nProvides seamless integration with Opencode platform featuring dynamic model switching,\nreal-time optimization, intelligent routing, and advanced performance monitoring.\n'
+import time
+import logging
+import json
+import asyncio
+import threading
+from typing import Dict, List, Any, Optional, Union, Callable
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from pathlib import Path
+import statistics
+from .smart_routing import SmartRouter, RoutingContext, RoutingDecision
+from .autonomous_intelligence import AutonomousIntelligence
+from .realtime_analytics import RealTimeAnalytics
+from .automated_workflows import WorkflowEngine
+logger = logging.getLogger(__name__)
+
+@dataclass
+class OpencodeModel:
+    """Opencode model configuration"""
+    model_id: str
+    display_name: str
+    description: str
+    capabilities: List[str]
+    context_window: int
+    max_tokens: int
+    cost_per_token: float
+    is_free: bool
+    is_available: bool = True
+    last_health_check: float = 0.0
+    performance_metrics: Dict[str, float] = field(default_factory=dict)
+
+@dataclass
+class ModelSwitchingEvent:
+    """Model switching event record"""
+    timestamp: float
+    from_model: str
+    to_model: str
+    reason: str
+    context_hash: str
+    performance_impact: float
+    user_satisfaction: Optional[float] = None
+
+@dataclass
+class IntegrationMetrics:
+    """Integration performance metrics"""
+    total_requests: int = 0
+    successful_requests: int = 0
+    model_switches: int = 0
+    avg_response_time: float = 0.0
+    avg_cost_per_request: float = 0.0
+    uptime: float = 0.0
+    error_rate: float = 0.0
+    user_satisfaction_avg: float = 0.0
+
+class EnhancedOpencodeIntegration:
+    """Enhanced Opencode integration with dynamic capabilities"""
+
+    def __init__(self, config_path: str='opencode.json', storage_path: str='enhanced_opencode.json'):
+        self.config_path = Path(config_path)
+        self.storage_path = Path(storage_path)
+        self.smart_router = SmartRouter()
+        self.autonomous_intel = AutonomousIntelligence()
+        self.analytics = RealTimeAnalytics()
+        self.workflow_engine = WorkflowEngine()
+        self.available_models: Dict[str, OpencodeModel] = {}
+        self.active_model: Optional[str] = None
+        self.model_switching_history: deque = deque(maxlen=1000)
+        self.is_initialized = False
+        self.is_monitoring = False
+        self.monitoring_thread: Optional[threading.Thread] = None
+        self.metrics = IntegrationMetrics()
+        self.request_history: deque = deque(maxlen=10000)
+        self.performance_cache: Dict[str, Any] = {}
+        self.integration_config = {'auto_model_switching': True, 'performance_monitoring': True, 'learning_enabled': True, 'workflow_automation': True, 'health_check_interval': 300, 'performance_update_interval': 60, 'cache_ttl': 300, 'max_concurrent_requests': 10, 'fallback_model': 'opencode/big-pickle'}
+        self.model_switch_handlers: List[Callable[[ModelSwitchingEvent], None]] = []
+        self.performance_handlers: List[Callable[[Dict[str, Any]], None]] = []
+        self._initialize_integration()
+
+    def _initialize_integration(self):
+        """Initialize the integration system"""
+        try:
+            self._load_configuration()
+            self._initialize_models()
+            self._start_monitoring()
+            self._setup_system_integrations()
+            self.is_initialized = True
+            logger.info('Enhanced Opencode integration initialized successfully')
+        except Exception as e:
+            logger.error(f'Failed to initialize integration: {e}')
+            raise
+
+    def _load_configuration(self):
+        """Load Opencode configuration"""
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                if 'enhanced_integration' in config:
+                    self.integration_config.update(config['enhanced_integration'])
+                logger.info('Loaded Opencode configuration')
+            else:
+                logger.warning(f'Configuration file not found: {self.config_path}')
+        except Exception as e:
+            logger.error(f'Failed to load configuration: {e}')
+
+    def _initialize_models(self):
+        """Initialize available models"""
+        known_models = {'opencode/big-pickle': OpencodeModel(model_id='opencode/big-pickle', display_name='Big Pickle', description='General purpose model with strong reasoning capabilities', capabilities=['text_generation', 'analysis', 'coding', 'reasoning'], context_window=8192, max_tokens=8192, cost_per_token=0.0, is_free=True, performance_metrics={'avg_response_time': 1.5, 'success_rate': 0.85, 'reliability': 0.9}), 'opencode/grok-code': OpencodeModel(model_id='opencode/grok-code', display_name='Grok Code', description='Specialized coding model with excellent debugging capabilities', capabilities=['coding', 'debugging', 'code_review', 'technical_analysis'], context_window=4096, max_tokens=4096, cost_per_token=0.0, is_free=True, performance_metrics={'avg_response_time': 1.2, 'success_rate': 0.9, 'reliability': 0.92})}
+        self.available_models.update(known_models)
+        self.active_model = self.integration_config['fallback_model']
+        logger.info(f'Initialized {len(self.available_models)} models')
+
+    def _start_monitoring(self):
+        """Start performance monitoring"""
+        if self.is_monitoring:
+            return
+        self.is_monitoring = True
+        self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.monitoring_thread.start()
+        self.analytics.start_monitoring()
+        logger.info('Started integration monitoring')
+
+    def _setup_system_integrations(self):
+        """Setup integrations between advanced systems"""
+
+        def routing_alert_handler(alert):
+            self.analytics.record_metric('routing_alert', 1, {'alert_type': alert.severity, 'message': alert.message})
+        self.analytics.add_alert_callback(routing_alert_handler)
+        self.autonomous_intel.set_workflow_callback(self.workflow_engine.execute_workflow)
+
+        def workflow_metric_handler(metric_name, value, tags):
+            self.analytics.record_metric(metric_name, value, tags)
+
+    def _monitoring_loop(self):
+        """Main monitoring loop"""
+        last_health_check = 0
+        last_performance_update = 0
+        while self.is_monitoring:
+            try:
+                current_time = time.time()
+                if current_time - last_health_check >= self.integration_config['health_check_interval']:
+                    self._perform_health_check()
+                    last_health_check = current_time
+                if current_time - last_performance_update >= self.integration_config['performance_update_interval']:
+                    self._update_performance_metrics()
+                    last_performance_update = current_time
+                self._cleanup_cache()
+                time.sleep(10)
+            except Exception as e:
+                logger.error(f'Error in monitoring loop: {e}')
+                time.sleep(30)
+
+    @lru_cache(maxsize=128)
+    def _perform_health_check(self):
+        """Perform health check on all models"""
+        for (model_id, model) in self.available_models.items():
+            try:
+                is_healthy = self._check_model_health(model_id)
+                if not is_healthy and model.is_available:
+                    logger.warning(f'Model {model_id} marked as unavailable')
+                    model.is_available = False
+                    if self.active_model == model_id:
+                        self._switch_to_fallback_model('health_check_failure')
+                elif is_healthy and (not model.is_available):
+                    logger.info(f'Model {model_id} recovered and marked as available')
+                    model.is_available = True
+                model.last_health_check = time.time()
+            except Exception as e:
+                logger.error(f'Health check failed for {model_id}: {e}')
+                model.is_available = False
+
+    def _check_model_health(self, model_id: str) -> bool:
+        """Check health of a specific model"""
+        if model_id not in self.available_models:
+            return False
+        model = self.available_models[model_id]
+        recent_requests = [r for r in self.request_history if r.get('model') == model_id and time.time() - r.get('timestamp', 0) < 300]
+        if len(recent_requests) >= 5:
+            success_rate = sum((1 for r in recent_requests if r.get('success', False))) / len(recent_requests)
+            avg_response_time = statistics.mean([r.get('response_time', 0) for r in recent_requests])
+            if success_rate < 0.7 or avg_response_time > 10:
+                return False
+        return True
+
+    def _update_performance_metrics(self):
+        """Update performance metrics"""
+        if not self.request_history:
+            return
+        recent_requests = [r for r in self.request_history if time.time() - r.get('timestamp', 0) < 3600]
+        if recent_requests:
+            self.metrics.total_requests = len(recent_requests)
+            self.metrics.successful_requests = sum((1 for r in recent_requests if r.get('success', False)))
+            self.metrics.error_rate = 1 - self.metrics.successful_requests / self.metrics.total_requests
+            response_times = [r.get('response_time', 0) for r in recent_requests if r.get('response_time')]
+            if response_times:
+                self.metrics.avg_response_time = statistics.mean(response_times)
+            costs = [r.get('cost', 0) for r in recent_requests if r.get('cost')]
+            if costs:
+                self.metrics.avg_cost_per_request = statistics.mean(costs)
+            satisfactions = [r.get('user_satisfaction', 0.5) for r in recent_requests if r.get('user_satisfaction')]
+            if satisfactions:
+                self.metrics.user_satisfaction_avg = statistics.mean(satisfactions)
+        self.analytics.record_metric('total_requests', self.metrics.total_requests)
+        self.analytics.record_metric('error_rate', self.metrics.error_rate)
+        self.analytics.record_metric('avg_response_time', self.metrics.avg_response_time)
+        for handler in self.performance_handlers:
+            try:
+                handler(asdict(self.metrics))
+            except Exception as e:
+                logger.error(f'Performance handler failed: {e}')
+
+    def _cleanup_cache(self):
+        """Clean up expired cache entries"""
+        current_time = time.time()
+        expired_keys = [key for (key, value) in self.performance_cache.items() if isinstance(value, dict) and 'timestamp' in value and (current_time - value['timestamp'] > self.integration_config['cache_ttl'])]
+        for key in expired_keys:
+            del self.performance_cache[key]
+
+    def process_request(self, user_input: str, conversation_history: List[Dict[str, Any]]=None, user_preferences: Dict[str, Any]=None, force_model: str=None) -> Dict[str, Any]:
+        """Process a user request with intelligent routing and model switching"""
+        start_time = time.time()
+        request_id = f'req_{int(start_time * 1000)}'
+        try:
+            context = self.smart_router.analyze_context(user_input, conversation_history, user_preferences)
+            if force_model and force_model in self.available_models:
+                selected_model = force_model
+                routing_decision = None
+                reasoning = [f'Manually forced to use {force_model}']
+            else:
+                routing_decision = self.smart_router.route_request(context)
+                selected_model = routing_decision.selected_model
+                reasoning = routing_decision.reasoning
+            if self.active_model != selected_model:
+                self._switch_model(self.active_model, selected_model, 'routing_decision', context)
+            if selected_model not in self.available_models or not self.available_models[selected_model].is_available:
+                selected_model = self.integration_config['fallback_model']
+                reasoning.append(f'Fallback to {selected_model} due to unavailability')
+            response = self._execute_request(selected_model, user_input, context)
+            response_time = time.time() - start_time
+            cost = self._calculate_cost(selected_model, user_input, response)
+            success = response.get('success', True)
+            request_record = {'request_id': request_id, 'timestamp': start_time, 'model': selected_model, 'user_input': user_input, 'response': response, 'response_time': response_time, 'cost': cost, 'success': success, 'context_hash': self.smart_router._generate_context_hash(context), 'routing_decision': asdict(routing_decision) if routing_decision else None}
+            self.request_history.append(request_record)
+            self.analytics.record_metric('request', 1)
+            self.analytics.record_metric('response_time', response_time)
+            if not success:
+                self.analytics.record_metric('error', 1)
+            if routing_decision:
+                self.smart_router.record_execution_result(decision_id=routing_decision.routing_metadata.get('context_hash', ''), response_time=response_time, cost=cost, success=success)
+            self.autonomous_intel.record_interaction(user_input=user_input, response=response.get('content', ''), model_used=selected_model, context=asdict(context), performance_metrics={'response_time': response_time, 'cost': cost, 'success': success})
+            return {'request_id': request_id, 'response': response, 'model_used': selected_model, 'response_time': response_time, 'cost': cost, 'reasoning': reasoning, 'routing_decision': routing_decision, 'context_analysis': asdict(context)}
+        except Exception as e:
+            logger.error(f'Request processing failed: {e}')
+            self.request_history.append({'request_id': request_id, 'timestamp': start_time, 'model': self.active_model, 'user_input': user_input, 'error': str(e), 'success': False, 'response_time': time.time() - start_time})
+            return {'request_id': request_id, 'error': str(e), 'model_used': self.active_model, 'success': False}
+
+    def _switch_model(self, from_model: str, to_model: str, reason: str, context: RoutingContext):
+        """Switch active model"""
+        if not self.integration_config['auto_model_switching']:
+            return
+        if to_model not in self.available_models or not self.available_models[to_model].is_available:
+            logger.warning(f'Cannot switch to unavailable model: {to_model}')
+            return
+        switch_event = ModelSwitchingEvent(timestamp=time.time(), from_model=from_model, to_model=to_model, reason=reason, context_hash=self.smart_router._generate_context_hash(context), performance_impact=self._calculate_switch_impact(from_model, to_model))
+        self.model_switching_history.append(switch_event)
+        self.metrics.model_switches += 1
+        old_model = self.active_model
+        self.active_model = to_model
+        self.analytics.record_metric('model_switch', 1, {'from_model': from_model, 'to_model': to_model, 'reason': reason})
+        for handler in self.model_switch_handlers:
+            try:
+                handler(switch_event)
+            except Exception as e:
+                logger.error(f'Model switch handler failed: {e}')
+        logger.info(f'Switched model: {old_model} -> {to_model} (reason: {reason})')
+
+    def _switch_to_fallback_model(self, reason: str):
+        """Switch to fallback model"""
+        fallback_model = self.integration_config['fallback_model']
+        if self.active_model != fallback_model:
+            self._switch_model(self.active_model, fallback_model, reason, RoutingContext(user_input='fallback_switch'))
+
+    def _calculate_switch_impact(self, from_model: str, to_model: str) -> float:
+        """Calculate performance impact of model switching"""
+        if from_model == to_model:
+            return 0.0
+        from_metrics = self.available_models.get(from_model, {}).performance_metrics
+        to_metrics = self.available_models.get(to_model, {}).performance_metrics
+        from_score = from_metrics.get('success_rate', 0.8) * 0.6 + (1 - min(from_metrics.get('avg_response_time', 2) / 5, 1)) * 0.4
+        to_score = to_metrics.get('success_rate', 0.8) * 0.6 + (1 - min(to_metrics.get('avg_response_time', 2) / 5, 1)) * 0.4
+        return to_score - from_score
+
+    def _execute_request(self, model_id: str, user_input: str, context: RoutingContext) -> Dict[str, Any]:
+        """Execute request on specified model"""
+        model = self.available_models[model_id]
+        base_time = model.performance_metrics.get('avg_response_time', 1.5)
+        complexity_factor = 1 + context.complexity_score
+        processing_time = base_time * complexity_factor
+        time.sleep(min(processing_time, 0.1))
+        response_content = self._generate_simulated_response(model_id, user_input, context)
+        return {'content': response_content, 'model': model_id, 'tokens_used': len(response_content.split()), 'success': True, 'metadata': {'processing_time': processing_time, 'complexity_score': context.complexity_score, 'domain': context.domain}}
+
+    def _generate_simulated_response(self, model_id: str, user_input: str, context: RoutingContext) -> str:
+        """Generate simulated response based on model and context"""
+        if model_id == 'opencode/grok-code' and context.domain == 'coding':
+            return f"[Grok Code Response] I'll help you with your coding request: {user_input[:50]}... Here's a solution with proper error handling and best practices."
+        elif model_id == 'opencode/big-pickle':
+            return f'[Big Pickle Response] I understand you need help with: {user_input[:50]}... Let me provide a comprehensive analysis and solution.'
+        else:
+            return f'[Model Response] Processing your request: {user_input[:50]}...'
+
+    def _calculate_cost(self, model_id: str, user_input: str, response: Dict[str, Any]) -> float:
+        """Calculate cost for request"""
+        model = self.available_models.get(model_id)
+        if not model:
+            return 0.0
+        input_tokens = len(user_input.split())
+        output_tokens = response.get('tokens_used', 0)
+        total_tokens = input_tokens + output_tokens
+        return total_tokens * model.cost_per_token
+
+    def add_model_switch_handler(self, handler: Callable[[ModelSwitchingEvent], None]):
+        """Add handler for model switching events"""
+        self.model_switch_handlers.append(handler)
+
+    def add_performance_handler(self, handler: Callable[[Dict[str, Any]], None]):
+        """Add handler for performance updates"""
+        self.performance_handlers.append(handler)
+
+    def get_integration_status(self) -> Dict[str, Any]:
+        """Get comprehensive integration status"""
+        return {'is_initialized': self.is_initialized, 'is_monitoring': self.is_monitoring, 'active_model': self.active_model, 'available_models': {model_id: {'display_name': model.display_name, 'is_available': model.is_available, 'is_free': model.is_free, 'capabilities': model.capabilities, 'performance': model.performance_metrics} for (model_id, model) in self.available_models.items()}, 'metrics': asdict(self.metrics), 'configuration': self.integration_config, 'system_integrations': {'smart_router': self.smart_router is not None, 'autonomous_intelligence': self.autonomous_intel is not None, 'analytics': self.analytics is not None, 'workflow_engine': self.workflow_engine is not None}, 'recent_activity': {'total_requests': len(self.request_history), 'model_switches': len(self.model_switching_history), 'last_request': self.request_history[-1]['timestamp'] if self.request_history else None, 'last_model_switch': self.model_switching_history[-1].timestamp if self.model_switching_history else None}}
+
+    def get_performance_analytics(self) -> Dict[str, Any]:
+        """Get comprehensive performance analytics"""
+        routing_analytics = self.smart_router.get_routing_analytics()
+        analytics_dashboard = self.analytics.get_real_time_dashboard()
+        autonomous_insights = self.autonomous_intel.get_learning_insights()
+        model_performance = {}
+        for (model_id, model) in self.available_models.items():
+            model_requests = [r for r in self.request_history if r.get('model') == model_id and time.time() - r.get('timestamp', 0) < 3600]
+            if model_requests:
+                success_rate = sum((1 for r in model_requests if r.get('success', False))) / len(model_requests)
+                avg_response_time = statistics.mean([r.get('response_time', 0) for r in model_requests])
+                model_performance[model_id] = {'requests': len(model_requests), 'success_rate': success_rate, 'avg_response_time': avg_response_time, 'user_satisfaction': statistics.mean([r.get('user_satisfaction', 0.5) for r in model_requests if r.get('user_satisfaction')]) if any((r.get('user_satisfaction') for r in model_requests)) else None}
+        return {'integration_metrics': asdict(self.metrics), 'model_performance': model_performance, 'routing_analytics': routing_analytics, 'realtime_dashboard': analytics_dashboard, 'autonomous_insights': autonomous_insights, 'model_switching_history': [asdict(event) for event in list(self.model_switching_history)[-20:]], 'performance_trends': self._calculate_performance_trends()}
+
+    def _calculate_performance_trends(self) -> Dict[str, Any]:
+        """Calculate performance trends over time"""
+        if len(self.request_history) < 10:
+            return {'status': 'insufficient_data'}
+        requests = list(self.request_history)
+        mid_point = len(requests) // 2
+        first_half = requests[:mid_point]
+        second_half = requests[mid_point:]
+
+        def calculate_period_metrics(period_requests):
+            if not period_requests:
+                return {}
+            return {'avg_response_time': statistics.mean([r.get('response_time', 0) for r in period_requests]), 'success_rate': sum((1 for r in period_requests if r.get('success', False))) / len(period_requests), 'avg_cost': statistics.mean([r.get('cost', 0) for r in period_requests if r.get('cost')])}
+        first_metrics = calculate_period_metrics(first_half)
+        second_metrics = calculate_period_metrics(second_half)
+        trends = {}
+        for metric in ['avg_response_time', 'success_rate', 'avg_cost']:
+            if metric in first_metrics and metric in second_metrics:
+                change = (second_metrics[metric] - first_metrics[metric]) / first_metrics[metric] * 100
+                trends[metric] = {'change_percent': change, 'trend': 'improving' if change < 0 and 'time' in metric or (change > 0 and 'success' in metric) else 'degrading'}
+        return trends
+
+    def optimize_integration(self) -> Dict[str, Any]:
+        """Optimize integration based on performance data"""
+        optimization_results = {'actions_taken': [], 'recommendations': [], 'performance_improvements': {}}
+        routing_optimization = self.smart_router.optimize_routing()
+        if routing_optimization.get('updated_weights'):
+            optimization_results['actions_taken'].append('Updated routing weights based on performance')
+            optimization_results['performance_improvements']['routing'] = routing_optimization
+        intel_optimization = self.autonomous_intel.optimize_learning()
+        if intel_optimization.get('improvements'):
+            optimization_results['actions_taken'].append('Optimized autonomous learning patterns')
+            optimization_results['performance_improvements']['intelligence'] = intel_optimization
+        unavailable_models = [model_id for (model_id, model) in self.available_models.items() if not model.is_available]
+        if unavailable_models:
+            optimization_results['recommendations'].append(f"Check availability of models: {', '.join(unavailable_models)}")
+        if self.metrics.error_rate > 0.1:
+            optimization_results['recommendations'].append(f'High error rate ({self.metrics.error_rate:.1%}) - consider switching to more reliable models')
+        if self.metrics.avg_response_time > 3.0:
+            optimization_results['recommendations'].append(f'High response time ({self.metrics.avg_response_time:.2f}s) - consider faster models')
+        return optimization_results
+
+    def shutdown(self):
+        """Shutdown the integration system"""
+        logger.info('Shutting down enhanced Opencode integration')
+        self.is_monitoring = False
+        if self.monitoring_thread:
+            self.monitoring_thread.join(timeout=5)
+        self.analytics.stop_monitoring()
+        self._save_integration_data()
+        logger.info('Enhanced Opencode integration shutdown complete')
+
+    def _save_integration_data(self):
+        """Save integration data to storage"""
+        try:
+            data = {'metrics': asdict(self.metrics), 'model_switching_history': [asdict(event) for event in self.model_switching_history], 'configuration': self.integration_config, 'last_updated': time.time()}
+            with open(self.storage_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f'Failed to save integration data: {e}')
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    integration = EnhancedOpencodeIntegration()
+    try:
+        test_requests = ['Write a Python function to sort a list', 'Analyze this data and provide insights', 'Help me debug my JavaScript code', 'Create a workflow for data processing']
+        for request in test_requests:
+            print(f'\nProcessing: {request}')
+            result = integration.process_request(request)
+            print(f"Model: {result['model_used']}")
+            print(f"Response time: {result['response_time']:.2f}s")
+            print(f"Cost: ${result['cost']:.6f}")
+            print(f"Reasoning: {', '.join(result['reasoning'])}")
+        status = integration.get_integration_status()
+        print(f'\nIntegration Status:')
+        print(f"Active model: {status['active_model']}")
+        print(f"Total requests: {status['metrics']['total_requests']}")
+        print(f"Success rate: {1 - status['metrics']['error_rate']:.1%}")
+        analytics = integration.get_performance_analytics()
+        print(f'\nPerformance Analytics:')
+        print(f"Model performance: {analytics['model_performance']}")
+        optimization = integration.optimize_integration()
+        print(f'\nOptimization Results: {optimization}')
+    finally:
+        integration.shutdown()

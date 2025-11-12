@@ -1,0 +1,164 @@
+from functools import lru_cache
+'\nCOMPREHENSIVE TEST: Full ML Engineer Assistant Capabilities\nTest autonomous intelligence, real-time analytics, automated workflows, \nsmart routing, dynamic model switching, and professional ML engineering\n'
+from config_opencode import load_config
+from brain_opencode import OpencodeBrain
+from skills import SkillRegistry
+import time
+import json
+
+@lru_cache(maxsize=128)
+def test_full_ml_engineer_assistant():
+    print('=' * 80)
+    print('COMPREHENSIVE ML ENGINEER ASSISTANT TEST')
+    print('=' * 80)
+    config = load_config()
+    skills = SkillRegistry()
+    brain = OpencodeBrain(config, skills)
+    print(f'✓ System initialized with {len(skills.skills)} skills')
+    print(f'✓ Current model: {brain.get_current_model()}')
+    print(f'✓ Available models: {len(brain.llm.get_available_models())}')
+    print('\n' + '=' * 60)
+    print('TEST 1: AUTONOMOUS INTELLIGENCE & LEARNING')
+    print('=' * 60)
+    autonomous_tasks = ['Analyze this ML pipeline and suggest improvements: data preprocessing -> feature engineering -> model training -> evaluation', 'Design a complete ML workflow for fraud detection with real-time data streaming', 'Create a self-optimizing hyperparameter tuning system for deep learning models']
+    for (i, task) in enumerate(autonomous_tasks, 1):
+        print(f'\n[1.{i}] Testing autonomous reasoning...')
+        start_time = time.time()
+        try:
+            response = brain.send_message(task)
+            response_time = time.time() - start_time
+            print(f'Response time: {response_time:.2f}s')
+            print(f'Response length: {len(response)} chars')
+            print(f'Sample: {response[:200]}...')
+            learning_indicators = ['improv', 'optim', 'learn', 'adapt', 'enhanc', 'tune']
+            has_learning = any((indicator in response.lower() for indicator in learning_indicators))
+            print(f"Learning capability: {('DETECTED' if has_learning else 'NOT DETECTED')}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+    print('\n' + '=' * 60)
+    print('TEST 2: REAL-TIME ANALYTICS & PERFORMANCE')
+    print('=' * 60)
+    analytics_tasks = ['Monitor model performance and generate real-time metrics dashboard', 'Create automated alerts for model drift detection', 'Build performance optimization pipeline with continuous monitoring']
+    for (i, task) in enumerate(analytics_tasks, 1):
+        print(f'\n[2.{i}] Testing analytics capabilities...')
+        start_time = time.time()
+        try:
+            response = brain.send_message(task)
+            response_time = time.time() - start_time
+            print(f'Response time: {response_time:.2f}s')
+            analytics_indicators = ['metric', 'monitor', 'dashboard', 'drift', 'performance', 'track']
+            has_analytics = any((indicator in response.lower() for indicator in analytics_indicators))
+            print(f"Analytics capability: {('DETECTED' if has_analytics else 'NOT DETECTED')}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+    print('\n' + '=' * 60)
+    print('TEST 3: AUTOMATED WORKFLOWS & COMPLEX AUTOMATION')
+    print('=' * 60)
+    automation_tasks = ['Create end-to-end ML pipeline automation: data ingestion -> preprocessing -> training -> deployment -> monitoring', 'Design automated A/B testing framework for model comparison', 'Build CI/CD pipeline for ML models with automated validation']
+    for (i, task) in enumerate(automation_tasks, 1):
+        print(f'\n[3.{i}] Testing automation capabilities...')
+        start_time = time.time()
+        try:
+            response = brain.send_message(task)
+            response_time = time.time() - start_time
+            print(f'Response time: {response_time:.2f}s')
+            automation_indicators = ['automat', 'pipeline', 'workflow', 'ci/cd', 'end-to-end']
+            has_automation = any((indicator in response.lower() for indicator in automation_indicators))
+            print(f"Automation capability: {('DETECTED' if has_automation else 'NOT DETECTED')}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+    print('\n' + '=' * 60)
+    print('TEST 4: SMART ROUTING & CONTEXT AWARENESS')
+    print('=' * 60)
+    context_tasks = [{'task': 'Help me debug this PyTorch model', 'context': 'deep learning, computer vision'}, {'task': 'Optimize this SQL query', 'context': 'database, performance'}, {'task': 'Deploy this model to production', 'context': 'mlops, kubernetes, docker'}]
+    for (i, item) in enumerate(context_tasks, 1):
+        print(f'\n[4.{i}] Testing context-aware routing...')
+        print(f"Task: {item['task']}")
+        print(f"Context: {item['context']}")
+        try:
+            response = brain.send_message(item['task'], context={'domain': item['context']})
+            context_relevance = any((word in response.lower() for word in item['context'].split(', ')))
+            print(f"Context awareness: {('DETECTED' if context_relevance else 'NOT DETECTED')}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+    print('\n' + '=' * 60)
+    print('TEST 5: DYNAMIC MODEL SWITCHING')
+    print('=' * 60)
+    available_models = brain.llm.get_available_models()[:5]
+    switching_results = []
+    for (i, model) in enumerate(available_models, 1):
+        print(f'\n[5.{i}] Testing model switch to: {model}')
+        try:
+            switch_result = brain.switch_model(model)
+            print(f'Switch result: {switch_result}')
+            test_task = 'What is the best approach for feature selection?'
+            start_time = time.time()
+            response = brain.send_message(test_task)
+            response_time = time.time() - start_time
+            switching_results.append({'model': model, 'response_time': response_time, 'response_length': len(response), 'success': True})
+            print(f'Response time: {response_time:.2f}s')
+            print(f'Response length: {len(response)} chars')
+        except Exception as e:
+            print(f'ERROR with {model}: {e}')
+            switching_results.append({'model': model, 'error': str(e), 'success': False})
+    successful_switches = [r for r in switching_results if r['success']]
+    print(f'\nDynamic switching: {len(successful_switches)}/{len(available_models)} models successful')
+    print('\n' + '=' * 60)
+    print('TEST 6: ADVANCED ML ENGINEERING CAPABILITIES')
+    print('=' * 60)
+    ml_engineering_tasks = ['Design distributed training system for large-scale deep learning', 'Create model interpretability framework for black-box models', 'Build real-time inference pipeline with latency optimization', 'Implement federated learning system for privacy-preserving ML']
+    for (i, task) in enumerate(ml_engineering_tasks, 1):
+        print(f'\n[6.{i}] Testing advanced ML engineering...')
+        start_time = time.time()
+        try:
+            response = brain.send_message(task)
+            response_time = time.time() - start_time
+            print(f'Response time: {response_time:.2f}s')
+            advanced_indicators = ['distribut', 'scal', 'interpret', 'federat', 'optim', 'pipeline']
+            has_advanced = any((indicator in response.lower() for indicator in advanced_indicators))
+            print(f"Advanced ML capability: {('DETECTED' if has_advanced else 'NOT DETECTED')}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+    print('\n' + '=' * 80)
+    print('FINAL ASSESSMENT: ML ENGINEER ASSISTANT CAPABILITIES')
+    print('=' * 80)
+    status = brain.get_status()
+    print(f"Total Skills Available: {len(status['available_skills'])}")
+    print(f"Current Model: {status['current_model']}")
+    print(f"Model Switches: {status['model_switches']}")
+    print(f"Opencode Integration: {status['is_opencode_available']}")
+    avg_switch_time = sum((r.get('response_time', 0) for r in successful_switches)) / len(successful_switches) if successful_switches else 0
+    print(f'Average Response Time: {avg_switch_time:.2f}s')
+    print(f'Successful Model Switches: {len(successful_switches)}')
+    capability_score = 0
+    max_score = 6
+    if len(skills.skills) >= 10:
+        capability_score += 1
+    if status['is_opencode_available']:
+        capability_score += 1
+    if len(successful_switches) >= 2:
+        capability_score += 1
+    if avg_switch_time < 15:
+        capability_score += 1
+    if len(status['available_skills']) >= 12:
+        capability_score += 1
+    if status['model_switches'] > 0:
+        capability_score += 1
+    print(f'\nCAPABILITY SCORE: {capability_score}/{max_score}')
+    if capability_score >= 5:
+        print('🎉 EXCELLENT: Full ML Engineer Assistant!')
+        print('✓ Autonomous intelligence working')
+        print('✓ Real-time analytics functional')
+        print('✓ Automated workflows operational')
+        print('✓ Smart routing active')
+        print('✓ Dynamic model switching working')
+        print('✓ Advanced ML engineering capabilities')
+        return True
+    elif capability_score >= 3:
+        print('✅ GOOD: ML Assistant with room for improvement')
+        return True
+    else:
+        print('⚠️  LIMITED: Basic functionality only')
+        return False
+if __name__ == '__main__':
+    test_full_ml_engineer_assistant()

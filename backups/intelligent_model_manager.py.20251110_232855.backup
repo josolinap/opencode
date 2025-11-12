@@ -1,0 +1,232 @@
+from functools import lru_cache
+'\nintelligent_model_manager.py - Advanced model management for Neo-Clone\n\nProvides intelligent model selection, delegation, and scaling capabilities\nbased on task requirements, model performance, and availability.\nUpdated to use only validated working models.\n'
+import logging
+import time
+import json
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, asdict
+from enum import Enum
+from llm_client_opencode import OpencodeLLMClient, LLMResponse
+from config_opencode import load_config
+logger = logging.getLogger(__name__)
+try:
+    from working_models import WORKING_MODELS
+    VALIDATED_MODELS = WORKING_MODELS
+    logger.info(f'Loaded {len(VALIDATED_MODELS)} validated models')
+except ImportError:
+    VALIDATED_MODELS = ['opencode/big-pickle', 'opencode/grok-code']
+    logger.warning('Using fallback validated models')
+
+class TaskType(Enum):
+    """Types of tasks that can be delegated to models"""
+    CODE_GENERATION = 'code_generation'
+    CODE_DEBUGGING = 'code_debugging'
+    TEXT_ANALYSIS = 'text_analysis'
+    GENERAL_QUERY = 'general_query'
+    MATH_LOGIC = 'math_logic'
+    CREATIVE_WRITING = 'creative_writing'
+    DATA_ANALYSIS = 'data_analysis'
+    TRANSLATION = 'translation'
+    SUMMARIZATION = 'summarization'
+
+@dataclass
+class ModelCapability:
+    """Defines a model's capabilities and performance metrics"""
+    name: str
+    task_types: List[TaskType]
+    avg_response_time: float
+    success_rate: float
+    cost_per_request: float
+    quality_score: float
+    availability: bool
+    last_tested: float
+    specialization: Optional[str] = None
+
+    def performance_score(self, task_type: TaskType) -> float:
+        """Calculate performance score for a specific task type"""
+        if task_type not in self.task_types:
+            return 0.0
+        weights = {'quality': 0.4, 'speed': 0.3, 'reliability': 0.2, 'cost': 0.1}
+        speed_score = max(0, 1.0 - self.avg_response_time / 30.0)
+        cost_score = max(0, 1.0 - self.cost_per_request / 0.01)
+        score = weights['quality'] * self.quality_score + weights['speed'] * speed_score + weights['reliability'] * self.success_rate + weights['cost'] * cost_score
+        if self.specialization and task_type.value in self.specialization:
+            score *= 1.2
+        return min(1.0, score)
+
+@dataclass
+class DelegationResult:
+    """Result from delegating a task to a model"""
+    task_id: str
+    model_used: str
+    task_type: TaskType
+    response: LLMResponse
+    execution_time: float
+    success: bool
+    performance_score: float
+    error_message: Optional[str] = None
+
+class IntelligentModelManager:
+    """Intelligent model management and delegation system"""
+
+    def __init__(self, llm_client: OpencodeLLMClient):
+        self.llm_client = llm_client
+        self.config = load_config()
+        self.model_capabilities = self._initialize_model_capabilities()
+        self.task_history = []
+        self.performance_cache = {}
+
+    def _initialize_model_capabilities(self) -> Dict[str, ModelCapability]:
+        """Initialize validated models with their capabilities"""
+        validated_models = {}
+        if 'opencode/big-pickle' in VALIDATED_MODELS:
+            validated_models['opencode/big-pickle'] = ModelCapability(name='opencode/big-pickle', task_types=[TaskType.CODE_GENERATION, TaskType.CODE_DEBUGGING, TaskType.GENERAL_QUERY, TaskType.TEXT_ANALYSIS, TaskType.MATH_LOGIC, TaskType.DATA_ANALYSIS, TaskType.SUMMARIZATION, TaskType.TRANSLATION], avg_response_time=3.8, success_rate=1.0, cost_per_request=0.0, quality_score=0.9, availability=True, last_tested=time.time(), specialization='general_purpose')
+        if 'opencode/grok-code' in VALIDATED_MODELS:
+            validated_models['opencode/grok-code'] = ModelCapability(name='opencode/grok-code', task_types=[TaskType.CODE_GENERATION, TaskType.CODE_DEBUGGING, TaskType.MATH_LOGIC, TaskType.DATA_ANALYSIS], avg_response_time=9.0, success_rate=1.0, cost_per_request=0.0, quality_score=0.9, availability=True, last_tested=time.time(), specialization='code_specialized')
+        logger.info(f'Initialized {len(validated_models)} validated model capabilities')
+        return validated_models
+
+    def _infer_task_types(self, model_name: str) -> List[TaskType]:
+        """Infer task types based on model name patterns"""
+        task_types = [TaskType.GENERAL_QUERY]
+        name_lower = model_name.lower()
+        if any((keyword in name_lower for keyword in ['code', 'codex', 'llama', 'mistral'])):
+            task_types.extend([TaskType.CODE_GENERATION, TaskType.CODE_DEBUGGING])
+        if any((keyword in name_lower for keyword in ['gemini', 'gpt', 'claude'])):
+            task_types.extend([TaskType.TEXT_ANALYSIS, TaskType.CREATIVE_WRITING, TaskType.TRANSLATION, TaskType.SUMMARIZATION])
+        if any((keyword in name_lower for keyword in ['embedding', 'sentence'])):
+            task_types.append(TaskType.DATA_ANALYSIS)
+        return list(set(task_types))
+
+    @lru_cache(maxsize=128)
+    def _infer_specialization(self, model_name: str) -> Optional[str]:
+        """Infer model specialization based on name"""
+        name_lower = model_name.lower()
+        if 'code' in name_lower or 'codex' in name_lower:
+            return 'code_specialized'
+        elif 'embedding' in name_lower:
+            return 'embedding_specialized'
+        elif 'text' in name_lower or 'sentence' in name_lower:
+            return 'text_specialized'
+        elif 'gemini' in name_lower:
+            return 'general_purpose'
+        elif 'llama' in name_lower or 'mistral' in name_lower:
+            return 'code_specialized'
+        return None
+
+    def classify_task(self, prompt: str) -> TaskType:
+        """Classify the type of task based on the prompt"""
+        prompt_lower = prompt.lower()
+        if any((keyword in prompt_lower for keyword in ['code', 'function', 'debug', 'fix', 'python', 'javascript', 'programming', 'algorithm', 'syntax', 'error'])):
+            if any((keyword in prompt_lower for keyword in ['debug', 'fix', 'error', 'bug'])):
+                return TaskType.CODE_DEBUGGING
+            return TaskType.CODE_GENERATION
+        if any((keyword in prompt_lower for keyword in ['calculate', 'math', 'equation', 'solve', 'compute', 'number'])):
+            return TaskType.MATH_LOGIC
+        if any((keyword in prompt_lower for keyword in ['analyze', 'data', 'statistics', 'pattern', 'insight'])):
+            return TaskType.DATA_ANALYSIS
+        if any((keyword in prompt_lower for keyword in ['analyze text', 'sentiment', 'extract', 'parse'])):
+            return TaskType.TEXT_ANALYSIS
+        if any((keyword in prompt_lower for keyword in ['write', 'story', 'creative', 'poem', 'essay'])):
+            return TaskType.CREATIVE_WRITING
+        if any((keyword in prompt_lower for keyword in ['translate', 'translation', 'language'])):
+            return TaskType.TRANSLATION
+        if any((keyword in prompt_lower for keyword in ['summarize', 'summary', 'brief', 'condense'])):
+            return TaskType.SUMMARIZATION
+        return TaskType.GENERAL_QUERY
+
+    def select_best_model(self, task_type: TaskType, force_available: bool=True) -> Optional[str]:
+        """Select the best model for a given task type"""
+        candidates = []
+        for (model_name, capability) in self.model_capabilities.items():
+            if force_available and (not capability.availability):
+                continue
+            if task_type in capability.task_types:
+                score = capability.performance_score(task_type)
+                candidates.append((model_name, score))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    def delegate_task(self, prompt: str, preferred_model: Optional[str]=None) -> DelegationResult:
+        """Delegate a task to the most suitable model"""
+        task_type = self.classify_task(prompt)
+        task_id = f'task_{int(time.time() * 1000)}'
+        if preferred_model and preferred_model in self.model_capabilities:
+            selected_model = preferred_model
+        else:
+            selected_model = self.select_best_model(task_type)
+        if not selected_model:
+            return DelegationResult(task_id=task_id, model_used='none', task_type=task_type, response=LLMResponse(content='No suitable model available for this task type', model='none', provider='error'), execution_time=0.0, success=False, performance_score=0.0, error_message='No suitable model found')
+        capability = self.model_capabilities[selected_model]
+        performance_score = capability.performance_score(task_type)
+        start_time = time.time()
+        try:
+            original_model = self.llm_client.get_current_model()
+            self.llm_client.set_model(selected_model)
+            messages = [{'role': 'user', 'content': prompt}]
+            response = self.llm_client.chat(messages, timeout=30)
+            execution_time = time.time() - start_time
+            self._update_model_performance(selected_model, task_type, execution_time, response)
+            self.llm_client.set_model(original_model)
+            return DelegationResult(task_id=task_id, model_used=selected_model, task_type=task_type, response=response, execution_time=execution_time, success=not response.content.startswith('['), performance_score=performance_score)
+        except Exception as e:
+            execution_time = time.time() - start_time
+            self._update_model_performance(selected_model, task_type, execution_time, None)
+            return DelegationResult(task_id=task_id, model_used=selected_model, task_type=task_type, response=LLMResponse(content=f'Task execution failed: {str(e)}', model=selected_model, provider='error'), execution_time=execution_time, success=False, performance_score=0.0, error_message=str(e))
+
+    def _update_model_performance(self, model_name: str, task_type: TaskType, execution_time: float, response: Optional[LLMResponse]):
+        """Update model performance metrics based on task execution"""
+        if model_name not in self.model_capabilities:
+            return
+        capability = self.model_capabilities[model_name]
+        capability.avg_response_time = capability.avg_response_time * 0.8 + execution_time * 0.2
+        if response is not None:
+            success = not response.content.startswith('[')
+            capability.success_rate = capability.success_rate * 0.9 + (1.0 if success else 0.0) * 0.1
+        capability.last_tested = time.time()
+
+    def get_model_status(self) -> Dict[str, Any]:
+        """Get comprehensive model status"""
+        validated_models = [name for (name, cap) in self.model_capabilities.items() if cap.availability]
+        total_models = len(self.model_capabilities)
+        available_tasks = set()
+        for cap in self.model_capabilities.values():
+            available_tasks.update(cap.task_types)
+        return {'total_models': total_models, 'validated_models': len(validated_models), 'available_task_types': [t.value for t in available_tasks], 'validated_model_list': validated_models, 'model_capabilities': {name: asdict(cap) for (name, cap) in self.model_capabilities.items()}, 'performance_summary': self._get_performance_summary()}
+
+    def _get_performance_summary(self) -> Dict[str, Any]:
+        """Get performance summary of all models"""
+        summary = {}
+        for task_type in TaskType:
+            best_model = self.select_best_model(task_type)
+            if best_model:
+                capability = self.model_capabilities[best_model]
+                summary[task_type.value] = {'best_model': best_model, 'performance_score': capability.performance_score(task_type), 'avg_response_time': capability.avg_response_time, 'success_rate': capability.success_rate}
+        return summary
+
+    def enable_model(self, model_name: str) -> bool:
+        """Enable a model for use"""
+        if model_name in self.model_capabilities:
+            self.model_capabilities[model_name].availability = True
+            logger.info(f'Enabled model: {model_name}')
+            return True
+        return False
+
+    def disable_model(self, model_name: str) -> bool:
+        """Disable a model from use"""
+        if model_name in self.model_capabilities:
+            self.model_capabilities[model_name].availability = False
+            logger.info(f'Disabled model: {model_name}')
+            return True
+        return False
+
+    def get_validated_models(self) -> List[str]:
+        """Get list of validated working models"""
+        return [model for model in VALIDATED_MODELS if model in self.model_capabilities]
+
+    def refresh_model_capabilities(self):
+        """Refresh model capabilities (only for validated models)"""
+        self.model_capabilities = self._initialize_model_capabilities()
+        logger.info(f'Refreshed capabilities for {len(self.model_capabilities)} validated models')

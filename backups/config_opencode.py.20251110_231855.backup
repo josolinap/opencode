@@ -1,0 +1,156 @@
+from functools import lru_cache
+"\nconfig_opencode.py - Opencode-compatible configuration management for neo-clone\n\nThis module adapts Neo-Clone to work seamlessly with Opencode's model selection system.\nIt reads Opencode's configuration and provides the same interface as the original config.py\nwhile respecting Opencode's model selection commands and format.\n\nIntegration with Opencode:\n- Reads `opencode.json` for model selection\n- Respects `provider/model` format\n- Integrates with Opencode's TUI model selection dialog (Ctrl+O)\n- Maintains single-instance LLM client pattern\n"
+from pydantic import BaseModel, Field, validator
+from typing import Optional, Dict, Any, List
+import os
+import json
+import logging
+import subprocess
+import platform
+from pathlib import Path
+logger = logging.getLogger(__name__)
+
+class OpencodeConfig(BaseModel):
+    """Opencode-specific model configuration"""
+    model: Optional[str] = Field(None, description='Selected model in provider/model format')
+    provider_options: Dict[str, Any] = Field(default_factory=dict, description='Model-specific options')
+    last_used_model: Optional[str] = Field(None, description='Last used model tracking')
+
+class Config(BaseModel):
+    provider: str = Field('ollama', description="LLM provider: 'ollama'|'hf'|'api'|'opencode'")
+    model_name: str = Field('ggml-neural-chat', description='Default model, e.g. for Ollama or HF')
+    api_endpoint: Optional[str] = Field('http://localhost:11434', description='API endpoint (for local Ollama, etc.)')
+    api_key: Optional[str] = Field(None, description='API key if provider requires one (Together.ai, etc.)')
+    max_tokens: int = Field(1024, description='Maximum tokens for model response')
+    temperature: float = Field(0.2, description='Generation temperature (0.0 - 2.0)')
+    system_prompt: Optional[str] = Field(None, description='Optional prompt for LLM')
+    opencode_model: Optional[str] = Field(None, description='Current Opencode model (provider/model format)')
+    opencode_config_path: Optional[str] = Field(None, description='Path to Opencode config')
+
+    @validator('temperature')
+    def check_temperature(cls, v):
+        if not 0.0 <= v <= 2.0:
+            raise ValueError('temperature must be between 0.0 and 2.0')
+        return v
+
+@lru_cache(maxsize=128)
+def find_opencode_config() -> Optional[str]:
+    """Find Opencode configuration file location"""
+    config_paths = ['opencode.json', '.opencode.json', 'opencode.jsonc', '.opencode.jsonc']
+    for config_name in config_paths:
+        config_path = Path(config_name)
+        if config_path.exists():
+            return str(config_path)
+    if platform.system() == 'Windows':
+        user_config_dir = Path.home() / 'AppData' / 'Roaming' / 'opencode'
+    else:
+        user_config_dir = Path.home() / '.config' / 'opencode'
+    for config_name in config_paths:
+        config_path = user_config_dir / config_name
+        if config_path.exists():
+            return str(config_path)
+    return None
+
+def read_opencode_config(config_path: str) -> Optional[OpencodeConfig]:
+    """Read and parse Opencode configuration"""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if config_path.endswith('.jsonc'):
+            lines = []
+            for line in content.split('\n'):
+                if '//' in line:
+                    line = line[:line.index('//')]
+                lines.append(line)
+            content = '\n'.join(lines)
+        data = json.loads(content)
+        return OpencodeConfig(**data) if data else None
+    except Exception as e:
+        logger.error(f'Failed to read Opencode config from {config_path}: {e}')
+        return None
+
+def get_available_opencode_models() -> List[str]:
+    """Get list of available models from Opencode"""
+    try:
+        result = subprocess.run(['opencode', 'models'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            models = []
+            for line in result.stdout.split('\n'):
+                line = line.strip()
+                if line and '/' in line and (not line.startswith('Available models')):
+                    models.append(line)
+            return models
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        logger.warning(f'Could not get Opencode models: {e}')
+    return []
+
+def translate_opencode_model_to_neo(opencode_model: str) -> tuple[str, str]:
+    """
+    Translate Opencode model format (provider/model) to Neo-Clone format
+    Returns (provider, model_name)
+    """
+    if not opencode_model or '/' not in opencode_model:
+        return ('ollama', 'ggml-neural-chat')
+    (provider_id, model_id) = opencode_model.split('/', 1)
+    provider_mapping = {'openai': 'api', 'anthropic': 'api', 'google': 'api', 'ollama': 'ollama', 'lmstudio': 'api', 'lmstudio': 'api'}
+    neo_provider = provider_mapping.get(provider_id, 'api')
+    return (neo_provider, model_id)
+
+def load_config(path: Optional[str]=None) -> Config:
+    """
+    Load configuration from Opencode config, JSON file, or environment variables.
+    
+    Precedence:
+    1. Opencode's current model selection
+    2. Passed-in config path or NEOCONFIG env var
+    3. Opencode config file
+    4. Environment variables
+    5. Defaults
+    """
+    try:
+        opencode_config_path = find_opencode_config()
+        opencode_config = None
+        if opencode_config_path:
+            opencode_config = read_opencode_config(opencode_config_path)
+        neo_config_data = {}
+        cfg_path = path or os.getenv('NEOCONFIG')
+        if cfg_path and os.path.exists(cfg_path):
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                neo_config_data = json.load(f)
+            logger.info(f'Loaded configuration from {cfg_path}')
+        opencode_model = None
+        if opencode_config and opencode_config.model:
+            opencode_model = opencode_config.model
+            logger.info(f'Using Opencode model: {opencode_model}')
+        env = {'provider': os.getenv('NEO_PROVIDER', 'ollama'), 'model_name': os.getenv('NEO_MODEL', 'ggml-neural-chat'), 'api_endpoint': os.getenv('NEO_API_ENDPOINT', 'http://localhost:11434'), 'api_key': os.getenv('NEO_API_KEY', None), 'max_tokens': int(os.getenv('NEO_MAX_TOKENS', '1024')), 'temperature': float(os.getenv('NEO_TEMPERATURE', '0.2')), 'system_prompt': os.getenv('NEO_SYSTEM_PROMPT', None), 'opencode_model': opencode_model, 'opencode_config_path': opencode_config_path}
+        env.update(neo_config_data)
+        config = Config(**env)
+        if opencode_model:
+            (neo_provider, neo_model) = translate_opencode_model_to_neo(opencode_model)
+            config.provider = neo_provider
+            config.model_name = neo_model
+            config.opencode_model = opencode_model
+            logger.info(f'Translated Opencode model {opencode_model} to Neo format: {neo_provider}/{neo_model}')
+        logger.info('Loaded configuration with Opencode integration')
+        return config
+    except Exception as e:
+        logger.exception('Failed to load config')
+        raise
+
+def get_current_opencode_model() -> Optional[str]:
+    """Get the currently selected Opencode model"""
+    config_path = find_opencode_config()
+    if config_path:
+        opencode_config = read_opencode_config(config_path)
+        if opencode_config and opencode_config.model:
+            return opencode_config.model
+    return None
+
+def is_opencode_available() -> bool:
+    """Check if Opencode is available and accessible"""
+    try:
+        result = subprocess.run(['opencode', '--version'], capture_output=True, text=True, timeout=5)
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+load_config_original = load_config

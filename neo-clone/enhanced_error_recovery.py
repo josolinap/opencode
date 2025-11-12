@@ -1,0 +1,549 @@
+from functools import lru_cache
+'\nEnhanced Error Recovery and Self-Healing System\n\nAdvanced error handling with automatic recovery, self-healing capabilities,\ncircuit breakers, and intelligent fallback mechanisms.\n'
+import json
+import time
+import logging
+import threading
+import traceback
+import inspect
+from typing import Dict, List, Optional, Any, Callable, Union, Type, Tuple
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from enum import Enum
+import asyncio
+from functools import wraps
+import hashlib
+logger = logging.getLogger(__name__)
+
+class ErrorSeverity(Enum):
+    """Error severity levels"""
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+    CRITICAL = 'critical'
+
+class ErrorCategory(Enum):
+    """Error categories for classification"""
+    NETWORK = 'network'
+    MODEL = 'model'
+    VALIDATION = 'validation'
+    SYSTEM = 'system'
+    MEMORY = 'memory'
+    TIMEOUT = 'timeout'
+    AUTHENTICATION = 'authentication'
+    RATE_LIMIT = 'rate_limit'
+    UNKNOWN = 'unknown'
+
+class CircuitState(Enum):
+    """Circuit breaker states"""
+    CLOSED = 'closed'
+    OPEN = 'open'
+    HALF_OPEN = 'half_open'
+
+@dataclass
+class ErrorRecord:
+    """Record of an error occurrence"""
+    timestamp: float
+    error_type: str
+    error_message: str
+    severity: ErrorSeverity
+    category: ErrorCategory
+    context: Dict[str, Any]
+    stack_trace: str
+    recovery_attempted: bool
+    recovery_successful: bool
+    recovery_method: Optional[str]
+    resolution_time: Optional[float]
+
+@dataclass
+class CircuitBreakerConfig:
+    """Configuration for circuit breaker"""
+    failure_threshold: int = 5
+    recovery_timeout: float = 60.0
+    expected_exception: Type[Exception] = Exception
+    success_threshold: int = 3
+
+class CircuitBreaker:
+    """Circuit breaker implementation"""
+
+    def __init__(self, config: CircuitBreakerConfig):
+        self.config = config
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitState.CLOSED
+        self.success_count = 0
+        self._lock = threading.RLock()
+
+    def call(self, func: Callable, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        with self._lock:
+            if self.state == CircuitState.OPEN:
+                if self._should_attempt_reset():
+                    self.state = CircuitState.HALF_OPEN
+                    self.success_count = 0
+                else:
+                    raise Exception(f'Circuit breaker is OPEN for {func.__name__}')
+            try:
+                result = func(*args, **kwargs)
+                self._on_success()
+                return result
+            except self.config.expected_exception as e:
+                self._on_failure()
+                raise e
+
+    def _should_attempt_reset(self) -> bool:
+        """Check if circuit breaker should attempt reset"""
+        return self.last_failure_time and time.time() - self.last_failure_time >= self.config.recovery_timeout
+
+    def _on_success(self):
+        """Handle successful call"""
+        if self.state == CircuitState.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.config.success_threshold:
+                self.state = CircuitState.CLOSED
+                self.failure_count = 0
+        elif self.state == CircuitState.CLOSED:
+            self.failure_count = 0
+
+    def _on_failure(self):
+        """Handle failed call"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.state == CircuitState.HALF_OPEN:
+            self.state = CircuitState.OPEN
+        elif self.state == CircuitState.CLOSED and self.failure_count >= self.config.failure_threshold:
+            self.state = CircuitState.OPEN
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get current circuit breaker state"""
+        return {'state': self.state.value, 'failure_count': self.failure_count, 'success_count': self.success_count, 'last_failure_time': self.last_failure_time}
+
+class RecoveryStrategy:
+    """Base class for recovery strategies"""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.success_count = 0
+        self.failure_count = 0
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+        """Attempt to recover from error"""
+        raise NotImplementedError
+
+    def record_success(self):
+        """Record successful recovery"""
+        self.success_count += 1
+
+    def record_failure(self):
+        """Record failed recovery"""
+        self.failure_count += 1
+
+    def get_success_rate(self) -> float:
+        """Get recovery success rate"""
+        total = self.success_count + self.failure_count
+        return self.success_count / total if total > 0 else 0.0
+
+class RetryStrategy(RecoveryStrategy):
+    """Retry recovery strategy"""
+
+    def __init__(self, max_retries: int=3, delay: float=1.0, backoff_factor: float=2.0):
+        super().__init__('retry')
+        self.max_retries = max_retries
+        self.delay = delay
+        self.backoff_factor = backoff_factor
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+        """Attempt recovery by retrying the operation"""
+        func = context.get('function')
+        if not func:
+            return False
+        current_delay = self.delay
+        for attempt in range(self.max_retries):
+            try:
+                time.sleep(current_delay)
+                args = context.get('args', [])
+                kwargs = context.get('kwargs', {})
+                result = func(*args, **kwargs)
+                self.record_success()
+                return True
+            except Exception as e:
+                current_delay *= self.backoff_factor
+                if attempt == self.max_retries - 1:
+                    self.record_failure()
+                    return False
+        self.record_failure()
+        return False
+
+class FallbackStrategy(RecoveryStrategy):
+    """Fallback recovery strategy"""
+
+    def __init__(self, fallback_func: Callable):
+        super().__init__('fallback')
+        self.fallback_func = fallback_func
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+        """Attempt recovery using fallback function"""
+        try:
+            args = context.get('args', [])
+            kwargs = context.get('kwargs', {})
+            result = self.fallback_func(*args, **kwargs)
+            self.record_success()
+            return True
+        except Exception as e:
+            self.record_failure()
+            return False
+
+class ModelSwitchStrategy(RecoveryStrategy):
+    """Model switching recovery strategy"""
+
+    def __init__(self, model_selector: Callable):
+        super().__init__('model_switch')
+        self.model_selector = model_selector
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+        """Attempt recovery by switching to a different model"""
+        try:
+            current_model = context.get('model_name')
+            alternative_model = self.model_selector(exclude_models=[current_model])
+            if not alternative_model or alternative_model == current_model:
+                self.record_failure()
+                return False
+            func = context.get('function')
+            if func:
+                args = context.get('args', [])
+                kwargs = context.get('kwargs', {})
+                kwargs['model'] = alternative_model
+                result = func(*args, **kwargs)
+                self.record_success()
+                return True
+            self.record_failure()
+            return False
+        except Exception as e:
+            self.record_failure()
+            return False
+
+class CacheRecoveryStrategy(RecoveryStrategy):
+    """Cache-based recovery strategy"""
+
+    def __init__(self, cache_client):
+        super().__init__('cache_recovery')
+        self.cache_client = cache_client
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+        """Attempt recovery by returning cached result"""
+        try:
+            prompt = context.get('prompt')
+            model = context.get('model_name')
+            if prompt and model:
+                cached_result = self.cache_client.get(prompt, model)
+                if cached_result:
+                    self.record_success()
+                    return True
+            self.record_failure()
+            return False
+        except Exception as e:
+            self.record_failure()
+            return False
+
+class EnhancedErrorRecovery:
+    """Enhanced error recovery and self-healing system"""
+
+    def __init__(self, config_path: str='error_recovery_config.json'):
+        self.config_path = Path(config_path)
+        self.error_history: List[ErrorRecord] = []
+        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self.recovery_strategies: List[RecoveryStrategy] = []
+        self.error_patterns: Dict[str, Dict] = {}
+        self.auto_healing_enabled = True
+        self.learning_enabled = True
+        self._lock = threading.RLock()
+        self._load_config()
+        self._initialize_default_strategies()
+        self._start_monitoring()
+
+    def _load_config(self):
+        """Load error recovery configuration"""
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+                    self.auto_healing_enabled = config.get('auto_healing_enabled', True)
+                    self.learning_enabled = config.get('learning_enabled', True)
+                    for (name, cb_config) in config.get('circuit_breakers', {}).items():
+                        self.circuit_breakers[name] = CircuitBreaker(CircuitBreakerConfig(**cb_config))
+                    self.error_patterns = config.get('error_patterns', {})
+                logger.info('Loaded error recovery configuration')
+        except Exception as e:
+            logger.warning(f'Could not load error recovery config: {e}')
+
+    def _save_config(self):
+        """Save error recovery configuration"""
+        try:
+            config = {'auto_healing_enabled': self.auto_healing_enabled, 'learning_enabled': self.learning_enabled, 'circuit_breakers': {name: asdict(cb.config) for (name, cb) in self.circuit_breakers.items()}, 'error_patterns': self.error_patterns}
+            with open(self.config_path, 'w') as f:
+                json.dump(config, f, indent=2, default=str)
+        except Exception as e:
+            logger.warning(f'Could not save error recovery config: {e}')
+
+    def _initialize_default_strategies(self):
+        """Initialize default recovery strategies"""
+        self.recovery_strategies.append(RetryStrategy(max_retries=3, delay=1.0))
+        self.recovery_strategies.append(ModelSwitchStrategy(lambda exclude: None))
+        self.recovery_strategies.append(CacheRecoveryStrategy(None))
+
+    def configure_model_switch_strategy(self, model_selector: Callable):
+        """Configure model switch strategy with model selector"""
+        for strategy in self.recovery_strategies:
+            if isinstance(strategy, ModelSwitchStrategy):
+                strategy.model_selector = model_selector
+                break
+
+    def configure_cache_recovery_strategy(self, cache_client):
+        """Configure cache recovery strategy with cache client"""
+        for strategy in self.recovery_strategies:
+            if isinstance(strategy, CacheRecoveryStrategy):
+                strategy.cache_client = cache_client
+                break
+
+    @lru_cache(maxsize=128)
+    def classify_error(self, error: Exception) -> Tuple[ErrorSeverity, ErrorCategory]:
+        """Classify error severity and category"""
+        error_message = str(error).lower()
+        error_type = type(error).__name__
+        if any((keyword in error_message for keyword in ['timeout', 'timed out'])):
+            category = ErrorCategory.TIMEOUT
+        elif any((keyword in error_message for keyword in ['network', 'connection', 'dns'])):
+            category = ErrorCategory.NETWORK
+        elif any((keyword in error_message for keyword in ['model', 'generation', 'inference'])):
+            category = ErrorCategory.MODEL
+        elif any((keyword in error_message for keyword in ['memory', 'out of memory'])):
+            category = ErrorCategory.MEMORY
+        elif any((keyword in error_message for keyword in ['auth', 'unauthorized', 'forbidden'])):
+            category = ErrorCategory.AUTHENTICATION
+        elif any((keyword in error_message for keyword in ['rate limit', 'too many requests'])):
+            category = ErrorCategory.RATE_LIMIT
+        elif any((keyword in error_message for keyword in ['validation', 'invalid', 'malformed'])):
+            category = ErrorCategory.VALIDATION
+        else:
+            category = ErrorCategory.UNKNOWN
+        if category in [ErrorCategory.SYSTEM, ErrorCategory.MEMORY]:
+            severity = ErrorSeverity.CRITICAL
+        elif category in [ErrorCategory.MODEL, ErrorCategory.NETWORK]:
+            severity = ErrorSeverity.HIGH
+        elif category in [ErrorCategory.TIMEOUT, ErrorCategory.RATE_LIMIT]:
+            severity = ErrorSeverity.MEDIUM
+        else:
+            severity = ErrorSeverity.LOW
+        return {
+            'severity': severity,
+            'category': category,
+            'error_type': error_type,
+            'error_message': error_message
+        }
+
+    def record_error(self, error: Exception, context: Dict[str, Any]=None):
+        """Record an error occurrence"""
+        (severity, category) = self.classify_error(error)
+        error_record = ErrorRecord(timestamp=time.time(), error_type=type(error).__name__, error_message=str(error), severity=severity, category=category, context=context or {}, stack_trace=traceback.format_exc(), recovery_attempted=False, recovery_successful=False, recovery_method=None, resolution_time=None)
+        with self._lock:
+            self.error_history.append(error_record)
+            if len(self.error_history) > 1000:
+                self.error_history = self.error_history[-1000:]
+            if self.learning_enabled:
+                self._update_error_patterns(error_record)
+        logger.error(f'Recorded error: {error_record.error_type} - {error_record.error_message}')
+
+    def _update_error_patterns(self, error_record: ErrorRecord):
+        """Update error patterns for learning"""
+        error_key = f'{error_record.error_type}:{error_record.category.value}'
+        if error_key not in self.error_patterns:
+            self.error_patterns[error_key] = {'count': 0, 'successful_recoveries': {}, 'context_patterns': {}, 'last_seen': 0}
+        pattern = self.error_patterns[error_key]
+        pattern['count'] += 1
+        pattern['last_seen'] = error_record.timestamp
+        for (key, value) in error_record.context.items():
+            if key not in pattern['context_patterns']:
+                pattern['context_patterns'][key] = {}
+            value_key = str(value)[:50]
+            if value_key not in pattern['context_patterns'][key]:
+                pattern['context_patterns'][key][value_key] = 0
+            pattern['context_patterns'][key][value_key] += 1
+
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]=None) -> Tuple[bool, Any]:
+        """Attempt to recover from an error"""
+        if not self.auto_healing_enabled:
+            return (False, None)
+        context = context or {}
+        recovery_start = time.time()
+        self.record_error(error, context)
+        for strategy in self.recovery_strategies:
+            try:
+                if strategy.attempt_recovery(error, context):
+                    recovery_time = time.time() - recovery_start
+                    with self._lock:
+                        if self.error_history:
+                            last_error = self.error_history[-1]
+                            last_error.recovery_attempted = True
+                            last_error.recovery_successful = True
+                            last_error.recovery_method = strategy.name
+                            last_error.resolution_time = recovery_time
+                    logger.info(f'Successfully recovered using {strategy.name} strategy')
+                    return (True, strategy.name)
+            except Exception as recovery_error:
+                logger.warning(f'Recovery strategy {strategy.name} failed: {recovery_error}')
+        recovery_time = time.time() - recovery_start
+        with self._lock:
+            if self.error_history:
+                last_error = self.error_history[-1]
+                last_error.recovery_attempted = True
+                last_error.recovery_successful = False
+                last_error.resolution_time = recovery_time
+        logger.error('All recovery attempts failed')
+        return (False, None)
+
+    def get_circuit_breaker(self, name: str) -> CircuitBreaker:
+        """Get or create circuit breaker"""
+        if name not in self.circuit_breakers:
+            self.circuit_breakers[name] = CircuitBreaker(CircuitBreakerConfig())
+        return self.circuit_breakers[name]
+
+    def protected_call(self, circuit_name: str, func: Callable, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        circuit_breaker = self.get_circuit_breaker(circuit_name)
+        return circuit_breaker.call(func, *args, **kwargs)
+
+    def _start_monitoring(self):
+        """Start background monitoring"""
+
+        def monitoring_loop():
+            while True:
+                try:
+                    self._analyze_error_trends()
+                    self._optimize_recovery_strategies()
+                    time.sleep(300)
+                except Exception as e:
+                    logger.error(f'Error in monitoring loop: {e}')
+                    time.sleep(60)
+        thread = threading.Thread(target=monitoring_loop, daemon=True)
+        thread.start()
+
+    def _analyze_error_trends(self):
+        """Analyze error trends and patterns"""
+        with self._lock:
+            if not self.error_history:
+                return
+            current_time = time.time()
+            recent_errors = [e for e in self.error_history if current_time - e.timestamp < 3600]
+            if not recent_errors:
+                return
+            category_counts = {}
+            severity_counts = {}
+            for error in recent_errors:
+                category_counts[error.category.value] = category_counts.get(error.category.value, 0) + 1
+                severity_counts[error.severity.value] = severity_counts.get(error.severity.value, 0) + 1
+            if len(recent_errors) > 10:
+                logger.warning(f'High error rate detected: {len(recent_errors)} errors in last hour')
+                logger.warning(f'By category: {category_counts}')
+                logger.warning(f'By severity: {severity_counts}')
+
+    def _optimize_recovery_strategies(self):
+        """Optimize recovery strategies based on performance"""
+        for strategy in self.recovery_strategies:
+            success_rate = strategy.get_success_rate()
+            if strategy.failure_count + strategy.success_count > 10:
+                logger.info(f'Strategy {strategy.name}: {success_rate:.2%} success rate ({strategy.success_count}/{strategy.success_count + strategy.failure_count})')
+
+    def get_error_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive error statistics"""
+        with self._lock:
+            if not self.error_history:
+                return {'total_errors': 0, 'recovery_rate': 0.0, 'avg_resolution_time': 0.0, 'errors_by_category': {}, 'errors_by_severity': {}, 'circuit_breakers': {}, 'recovery_strategies': {}}
+            total_errors = len(self.error_history)
+            recovered_errors = sum((1 for e in self.error_history if e.recovery_successful))
+            recovery_rate = recovered_errors / total_errors
+            resolution_times = [e.resolution_time for e in self.error_history if e.resolution_time]
+            avg_resolution_time = sum(resolution_times) / len(resolution_times) if resolution_times else 0
+            errors_by_category = {}
+            errors_by_severity = {}
+            for error in self.error_history:
+                errors_by_category[error.category.value] = errors_by_category.get(error.category.value, 0) + 1
+                errors_by_severity[error.severity.value] = errors_by_severity.get(error.severity.value, 0) + 1
+            circuit_breaker_status = {name: cb.get_state() for (name, cb) in self.circuit_breakers.items()}
+            recovery_strategy_stats = {}
+            for strategy in self.recovery_strategies:
+                recovery_strategy_stats[strategy.name] = {'success_rate': strategy.get_success_rate(), 'success_count': strategy.success_count, 'failure_count': strategy.failure_count}
+            return {'total_errors': total_errors, 'recovery_rate': recovery_rate, 'avg_resolution_time': avg_resolution_time, 'errors_by_category': errors_by_category, 'errors_by_severity': errors_by_severity, 'circuit_breakers': circuit_breaker_status, 'recovery_strategies': recovery_strategy_stats, 'auto_healing_enabled': self.auto_healing_enabled, 'learning_enabled': self.learning_enabled}
+
+    def enable_auto_healing(self):
+        """Enable automatic error recovery"""
+        self.auto_healing_enabled = True
+        logger.info('Auto-healing enabled')
+
+    def disable_auto_healing(self):
+        """Disable automatic error recovery"""
+        self.auto_healing_enabled = False
+        logger.info('Auto-healing disabled')
+
+    def enable_learning(self):
+        """Enable error pattern learning"""
+        self.learning_enabled = True
+        logger.info('Error learning enabled')
+
+    def disable_learning(self):
+        """Disable error pattern learning"""
+        self.learning_enabled = False
+        logger.info('Error learning disabled')
+
+    def clear_error_history(self):
+        """Clear error history"""
+        with self._lock:
+            self.error_history.clear()
+        logger.info('Error history cleared')
+
+    def get_recovery_strategies(self) -> List[RecoveryStrategy]:
+        """Get list of recovery strategies"""
+        return self.recovery_strategies.copy()
+
+def with_error_recovery(circuit_name: str=None, fallback_func: Callable=None):
+    """Decorator for adding error recovery to functions"""
+
+    def decorator(func):
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            error_recovery = get_error_recovery()
+            context = {'function': func, 'args': args, 'kwargs': kwargs, 'model_name': kwargs.get('model'), 'prompt': kwargs.get('prompt')}
+            if fallback_func and (not any((isinstance(s, FallbackStrategy) for s in error_recovery.recovery_strategies))):
+                error_recovery.recovery_strategies.append(FallbackStrategy(fallback_func))
+            try:
+                if circuit_name:
+                    return error_recovery.protected_call(circuit_name, func, *args, **kwargs)
+                else:
+                    return func(*args, **kwargs)
+            except Exception as e:
+                (recovered, method) = error_recovery.attempt_recovery(e, context)
+                if recovered:
+                    if method == 'fallback' and fallback_func:
+                        return fallback_func(*args, **kwargs)
+                    elif method == 'cache_recovery':
+                        cache_client = None
+                        for strategy in error_recovery.recovery_strategies:
+                            if isinstance(strategy, CacheRecoveryStrategy):
+                                cache_client = strategy.cache_client
+                                break
+                        if cache_client:
+                            prompt = kwargs.get('prompt')
+                            model = kwargs.get('model')
+                            return cache_client.get(prompt, model)
+                raise e
+        return wrapper
+    return decorator
+_error_recovery_instance = None
+
+def get_error_recovery() -> EnhancedErrorRecovery:
+    """Get the global error recovery instance"""
+    global _error_recovery_instance
+    if _error_recovery_instance is None:
+        _error_recovery_instance = EnhancedErrorRecovery()
+    return _error_recovery_instance

@@ -1,0 +1,90 @@
+from functools import lru_cache
+'\nSIMPLIFIED TEST: Core ML Engineer Assistant Capabilities\n'
+from config_opencode import load_config
+from brain_opencode import OpencodeBrain
+from skills import SkillRegistry
+import time
+
+@lru_cache(maxsize=128)
+def test_core_capabilities():
+    print('=' * 80)
+    print('CORE ML ENGINEER ASSISTANT CAPABILITIES TEST')
+    print('=' * 80)
+    config = load_config()
+    skills = SkillRegistry()
+    brain = OpencodeBrain(config, skills)
+    print(f'System initialized with {len(skills.skills)} skills')
+    print(f'Available skills: {list(skills.skills.keys())}')
+    test_cases = [{'name': 'Autonomous Intelligence', 'task': 'Design a self-improving ML system that adapts to new data patterns', 'keywords': ['adapt', 'learn', 'improv', 'optim']}, {'name': 'Real-time Analytics', 'task': 'Create real-time monitoring dashboard for model performance metrics', 'keywords': ['monitor', 'metric', 'dashboard', 'real-time']}, {'name': 'Automated Workflows', 'task': 'Build automated ML pipeline for data processing and model training', 'keywords': ['automat', 'pipeline', 'workflow']}, {'name': 'Smart Routing', 'task': 'Help me optimize this neural network architecture', 'context': {'domain': 'deep learning, optimization'}, 'keywords': ['neural', 'network', 'optim', 'architect']}, {'name': 'ML Engineering', 'task': 'Implement distributed training for large-scale deep learning models', 'keywords': ['distribut', 'scal', 'train', 'deep learn']}]
+    results = []
+    for (i, test_case) in enumerate(test_cases, 1):
+        print(f"\n[{i}] Testing {test_case['name']}...")
+        print(f"Task: {test_case['task']}")
+        try:
+            start_time = time.time()
+            if 'context' in test_case:
+                response = brain.send_message(test_case['task'], context=test_case['context'])
+            else:
+                response = brain.send_message(test_case['task'])
+            response_time = time.time() - start_time
+            response_lower = response.lower()
+            found_keywords = [kw for kw in test_case['keywords'] if kw in response_lower]
+            result = {'name': test_case['name'], 'response_time': response_time, 'response_length': len(response), 'keywords_found': found_keywords, 'success': len(found_keywords) > 0, 'sample': response[:150] + '...' if len(response) > 150 else response}
+            results.append(result)
+            print(f'Response time: {response_time:.2f}s')
+            print(f'Keywords found: {found_keywords}')
+            print(f"Capability: {('DETECTED' if result['success'] else 'NOT DETECTED')}")
+            print(f"Sample: {result['sample']}")
+        except Exception as e:
+            print(f'ERROR: {e}')
+            results.append({'name': test_case['name'], 'error': str(e), 'success': False})
+    print(f'\n[MODEL SWITCHING TEST]')
+    available_models = brain.llm.get_available_models()
+    test_models = available_models[:3] if len(available_models) >= 3 else available_models
+    switching_results = []
+    for model in test_models:
+        try:
+            print(f'Testing switch to: {model}')
+            switch_result = brain.switch_model(model)
+            current = brain.get_current_model()
+            switching_results.append({'model': model, 'success': model in current, 'result': switch_result})
+            print(f'Switch result: {switch_result}')
+        except Exception as e:
+            print(f'Switch error: {e}')
+            switching_results.append({'model': model, 'error': str(e), 'success': False})
+    print(f'\n' + '=' * 80)
+    print('FINAL ASSESSMENT')
+    print('=' * 80)
+    successful_capabilities = [r for r in results if r.get('success', False)]
+    successful_switches = [r for r in switching_results if r.get('success', False)]
+    print(f'Capabilities detected: {len(successful_capabilities)}/{len(test_cases)}')
+    for result in successful_capabilities:
+        print(f"  + {result['name']}: {result['response_time']:.1f}s, keywords: {result['keywords_found']}")
+    print(f'\nModel switching: {len(successful_switches)}/{len(test_models)} successful')
+    for result in successful_switches:
+        print(f"  + {result['model']}")
+    capability_score = len(successful_capabilities) / len(test_cases) * 100
+    switching_score = len(successful_switches) / len(test_models) * 100 if test_models else 0
+    print(f'\nCapability Score: {capability_score:.0f}%')
+    print(f'Switching Score: {switching_score:.0f}%')
+    status = brain.get_status()
+    print(f'\nSystem Status:')
+    print(f"  Total Skills: {len(status['available_skills'])}")
+    print(f"  Current Model: {status['current_model']}")
+    print(f"  Opencode Available: {status['is_opencode_available']}")
+    print(f"  Model Switches: {status['model_switches']}")
+    overall_score = (capability_score + switching_score) / 2
+    if overall_score >= 70:
+        print(f'\nOVERALL: EXCELLENT ({overall_score:.0f}%)')
+        print('Full ML Engineer Assistant capabilities confirmed!')
+        return True
+    elif overall_score >= 50:
+        print(f'\nOVERALL: GOOD ({overall_score:.0f}%)')
+        print('ML Assistant capabilities working with room for improvement')
+        return True
+    else:
+        print(f'\nOVERALL: LIMITED ({overall_score:.0f}%)')
+        print('Basic functionality only')
+        return False
+if __name__ == '__main__':
+    test_core_capabilities()

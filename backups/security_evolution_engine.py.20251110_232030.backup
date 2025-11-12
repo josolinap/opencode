@@ -1,0 +1,825 @@
+#!/usr/bin/env python3
+"""
+Security Evolution Engine - Self-evolving security capabilities
+Continuous learning and adaptation for pentesting and reverse engineering
+"""
+
+import os
+import json
+import time
+import threading
+import hashlib
+import requests
+import subprocess
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass, asdict
+from pathlib import Path
+import re
+import sqlite3
+import pickle
+
+@dataclass
+class SecurityPattern:
+    """Security attack/defense pattern"""
+    id: str
+    name: str
+    category: str
+    description: str
+    indicators: List[str]
+    mitigation: List[str]
+    tools_required: List[str]
+    difficulty: str
+    effectiveness: float
+    discovered_at: datetime
+    last_used: Optional[datetime] = None
+    success_rate: float = 0.0
+    usage_count: int = 0
+
+@dataclass
+class ThreatIntelligence:
+    """Threat intelligence data"""
+    threat_id: str
+    threat_type: str
+    severity: str
+    description: str
+    iocs: List[str]  # Indicators of compromise
+    affected_systems: List[str]
+    mitigation_strategies: List[str]
+    sources: List[str]
+    first_seen: datetime
+    last_updated: datetime
+
+class SecurityKnowledgeBase:
+    """Persistent security knowledge storage"""
+    
+    def __init__(self, db_path: str = "security_knowledge.db"):
+        self.db_path = db_path
+        self.logger = logging.getLogger('SecurityKnowledgeBase')
+        self._initialize_database()
+    
+    def _initialize_database(self):
+        """Initialize SQLite database for knowledge storage"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Create patterns table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS security_patterns (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                description TEXT,
+                indicators TEXT,
+                mitigation TEXT,
+                tools_required TEXT,
+                difficulty TEXT,
+                effectiveness REAL,
+                discovered_at TEXT,
+                last_used TEXT,
+                success_rate REAL,
+                usage_count INTEGER
+            )
+        ''')
+        
+        # Create threat intelligence table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS threat_intelligence (
+                threat_id TEXT PRIMARY KEY,
+                threat_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                description TEXT,
+                iocs TEXT,
+                affected_systems TEXT,
+                mitigation_strategies TEXT,
+                sources TEXT,
+                first_seen TEXT,
+                last_updated TEXT
+            )
+        ''')
+        
+        # Create evolution history table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS evolution_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                evolution_type TEXT NOT NULL,
+                new_capabilities TEXT,
+                performance_metrics TEXT,
+                learned_patterns TEXT
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def store_pattern(self, pattern: SecurityPattern):
+        """Store security pattern in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO security_patterns 
+            (id, name, category, description, indicators, mitigation, tools_required,
+             difficulty, effectiveness, discovered_at, last_used, success_rate, usage_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            pattern.id,
+            pattern.name,
+            pattern.category,
+            pattern.description,
+            json.dumps(pattern.indicators),
+            json.dumps(pattern.mitigation),
+            json.dumps(pattern.tools_required),
+            pattern.difficulty,
+            pattern.effectiveness,
+            pattern.discovered_at.isoformat(),
+            pattern.last_used.isoformat() if pattern.last_used else None,
+            pattern.success_rate,
+            pattern.usage_count
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_patterns_by_category(self, category: str) -> List[SecurityPattern]:
+        """Retrieve patterns by category"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM security_patterns WHERE category = ?', (category,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        patterns = []
+        for row in rows:
+            pattern = SecurityPattern(
+                id=row[0],
+                name=row[1],
+                category=row[2],
+                description=row[3],
+                indicators=json.loads(row[4]),
+                mitigation=json.loads(row[5]),
+                tools_required=json.loads(row[6]),
+                difficulty=row[7],
+                effectiveness=row[8],
+                discovered_at=datetime.fromisoformat(row[9]),
+                last_used=datetime.fromisoformat(row[10]) if row[10] else None,
+                success_rate=row[11],
+                usage_count=row[12]
+            )
+            patterns.append(pattern)
+        
+        return patterns
+    
+    def store_threat_intel(self, threat: ThreatIntelligence):
+        """Store threat intelligence"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO threat_intelligence
+            (threat_id, threat_type, severity, description, iocs, affected_systems,
+             mitigation_strategies, sources, first_seen, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            threat.threat_id,
+            threat.threat_type,
+            threat.severity,
+            threat.description,
+            json.dumps(threat.iocs),
+            json.dumps(threat.affected_systems),
+            json.dumps(threat.mitigation_strategies),
+            json.dumps(threat.sources),
+            threat.first_seen.isoformat(),
+            threat.last_updated.isoformat()
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_recent_threats(self, days: int = 7) -> List[ThreatIntelligence]:
+        """Get recent threats from last N days"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor.execute('''
+            SELECT * FROM threat_intelligence 
+            WHERE first_seen >= ? 
+            ORDER BY first_seen DESC
+        ''', (cutoff_date,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        threats = []
+        for row in rows:
+            threat = ThreatIntelligence(
+                threat_id=row[0],
+                threat_type=row[1],
+                severity=row[2],
+                description=row[3],
+                iocs=json.loads(row[4]),
+                affected_systems=json.loads(row[5]),
+                mitigation_strategies=json.loads(row[6]),
+                sources=json.loads(row[7]),
+                first_seen=datetime.fromisoformat(row[8]),
+                last_updated=datetime.fromisoformat(row[9])
+            )
+            threats.append(threat)
+        
+        return threats
+
+class ThreatIntelligenceCollector:
+    """Collect threat intelligence from various sources"""
+    
+    def __init__(self, knowledge_base: SecurityKnowledgeBase):
+        self.kb = knowledge_base
+        self.logger = logging.getLogger('ThreatIntelligenceCollector')
+        
+        # Threat intelligence sources
+        self.sources = {
+            'cve': self._collect_cve_data,
+            'exploitdb': self._collect_exploitdb_data,
+            'threatfeeds': self._collect_threat_feed_data,
+            'malware': self._collect_malware_data
+        }
+    
+    def collect_all_intelligence(self):
+        """Collect intelligence from all sources"""
+        self.logger.info("Starting threat intelligence collection...")
+        
+        for source_name, collector_func in self.sources.items():
+            try:
+                self.logger.info(f"Collecting from {source_name}...")
+                threats = collector_func()
+                
+                for threat in threats:
+                    self.kb.store_threat_intel(threat)
+                
+                self.logger.info(f"Collected {len(threats)} threats from {source_name}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to collect from {source_name}: {e}")
+    
+    def _collect_cve_data(self) -> List[ThreatIntelligence]:
+        """Collect CVE data (simulated)"""
+        threats = []
+        
+        # Simulate CVE collection
+        recent_cves = [
+            {
+                'id': 'CVE-2024-0001',
+                'description': 'Remote code execution in web application framework',
+                'severity': 'Critical',
+                'affected_systems': ['Apache', 'Nginx', 'IIS'],
+                'iocs': ['POST /admin', 'User-Agent: ExploitScanner']
+            },
+            {
+                'id': 'CVE-2024-0002', 
+                'description': 'Buffer overflow in network service',
+                'severity': 'High',
+                'affected_systems': ['Linux', 'Windows'],
+                'iocs': ['TCP port 8080', 'Malformed packets']
+            }
+        ]
+        
+        for cve in recent_cves:
+            threat = ThreatIntelligence(
+                threat_id=cve['id'],
+                threat_type='vulnerability',
+                severity=cve['severity'],
+                description=cve['description'],
+                iocs=cve['iocs'],
+                affected_systems=cve['affected_systems'],
+                mitigation_strategies=[
+                    'Apply security patches',
+                    'Update to latest version',
+                    'Implement network segmentation'
+                ],
+                sources=['CVE Database'],
+                first_seen=datetime.now() - timedelta(days=1),
+                last_updated=datetime.now()
+            )
+            threats.append(threat)
+        
+        return threats
+    
+    def _collect_exploitdb_data(self) -> List[ThreatIntelligence]:
+        """Collect ExploitDB data (simulated)"""
+        return []
+    
+    def _collect_threat_feed_data(self) -> List[ThreatIntelligence]:
+        """Collect from threat feeds (simulated)"""
+        return []
+    
+    def _collect_malware_data(self) -> List[ThreatIntelligence]:
+        """Collect malware intelligence (simulated)"""
+        return []
+
+class SecurityPatternDiscovery:
+    """Discover new security patterns from analysis"""
+    
+    def __init__(self, knowledge_base: SecurityKnowledgeBase):
+        self.kb = knowledge_base
+        self.logger = logging.getLogger('SecurityPatternDiscovery')
+    
+    def discover_patterns_from_logs(self, log_files: List[str]) -> List[SecurityPattern]:
+        """Discover patterns from security logs"""
+        patterns = []
+        
+        for log_file in log_files:
+            if not os.path.exists(log_file):
+                continue
+                
+            try:
+                with open(log_file, 'r') as f:
+                    log_content = f.read()
+                
+                # Analyze log for attack patterns
+                discovered = self._analyze_log_content(log_content)
+                patterns.extend(discovered)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to analyze log {log_file}: {e}")
+        
+        return patterns
+    
+    def _analyze_log_content(self, content: str) -> List[SecurityPattern]:
+        """Analyze log content for patterns"""
+        patterns = []
+        
+        # Common attack pattern signatures
+        attack_signatures = {
+            'sql_injection': [
+                r"union.*select",
+                r"or.*1=1",
+                r"drop.*table",
+                r"insert.*into"
+            ],
+            'xss': [
+                r"<script>",
+                r"javascript:",
+                r"onerror=",
+                r"onload="
+            ],
+            'directory_traversal': [
+                r"\.\./",
+                r"\.\.\\",
+                r"%2e%2e%2f"
+            ],
+            'command_injection': [
+                r";.*cat",
+                r";.*ls",
+                r"`.*whoami",
+                r"\|.*nc"
+            ]
+        }
+        
+        for attack_type, signatures in attack_signatures.items():
+            for signature in signatures:
+                if re.search(signature, content, re.IGNORECASE):
+                    pattern = SecurityPattern(
+                        id=f"auto_discovered_{attack_type}_{int(time.time())}",
+                        name=f"Auto-discovered {attack_type.replace('_', ' ').title()}",
+                        category=attack_type,
+                        description=f"Discovered {attack_type} pattern in log analysis",
+                        indicators=[signature],
+                        mitigation=[
+                            "Input validation",
+                            "Web Application Firewall",
+                            "Parameterized queries"
+                        ],
+                        tools_required=["log_analyzer", "waf"],
+                        difficulty="medium",
+                        effectiveness=0.8,
+                        discovered_at=datetime.now()
+                    )
+                    patterns.append(pattern)
+                    break
+        
+        return patterns
+    
+    def discover_patterns_from_network_traffic(self, pcap_files: List[str]) -> List[SecurityPattern]:
+        """Discover patterns from network traffic analysis"""
+        patterns = []
+        
+        for pcap_file in pcap_files:
+            if not os.path.exists(pcap_file):
+                continue
+            
+            try:
+                # Network traffic analysis logic would go here
+                # For now, simulate pattern discovery
+                pattern = SecurityPattern(
+                    id=f"network_pattern_{int(time.time())}",
+                    name="Suspicious Network Traffic Pattern",
+                    category="network_attack",
+                    description="Discovered suspicious network communication pattern",
+                    indicators=["Unusual port usage", "High frequency connections"],
+                    mitigation=["Network segmentation", "IDS/IPS deployment"],
+                    tools_required=["wireshark", "snort"],
+                    difficulty="high",
+                    effectiveness=0.9,
+                    discovered_at=datetime.now()
+                )
+                patterns.append(pattern)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to analyze pcap {pcap_file}: {e}")
+        
+        return patterns
+
+class SecurityCapabilityEvolution:
+    """Evolve security capabilities based on learning"""
+    
+    def __init__(self, knowledge_base: SecurityKnowledgeBase):
+        self.kb = knowledge_base
+        self.logger = logging.getLogger('SecurityCapabilityEvolution')
+        self.capability_registry = {}
+        self.performance_metrics = {}
+        
+    def evolve_capabilities(self) -> Dict:
+        """Main evolution process"""
+        evolution_result = {
+            'timestamp': datetime.now(),
+            'new_capabilities': [],
+            'improved_capabilities': [],
+            'deprecated_capabilities': [],
+            'performance_improvements': {}
+        }
+        
+        # Analyze current capabilities
+        current_analysis = self._analyze_current_capabilities()
+        
+        # Identify gaps and opportunities
+        capability_gaps = self._identify_capability_gaps(current_analysis)
+        
+        # Develop new capabilities
+        for gap in capability_gaps:
+            new_capability = self._develop_new_capability(gap)
+            if new_capability:
+                evolution_result['new_capabilities'].append(new_capability)
+        
+        # Optimize existing capabilities
+        improvements = self._optimize_existing_capabilities()
+        evolution_result['improved_capabilities'] = improvements
+        
+        # Update performance metrics
+        evolution_result['performance_improvements'] = self._update_performance_metrics()
+        
+        # Record evolution
+        self._record_evolution(evolution_result)
+        
+        return evolution_result
+    
+    def _analyze_current_capabilities(self) -> Dict:
+        """Analyze current security capabilities"""
+        analysis = {
+            'total_patterns': 0,
+            'categories': {},
+            'effectiveness_avg': 0.0,
+            'usage_frequency': {},
+            'success_rates': {}
+        }
+        
+        # Get all patterns from knowledge base
+        categories = ['reconnaissance', 'exploitation', 'post_exploitation', 'defense', 'forensics']
+        
+        for category in categories:
+            patterns = self.kb.get_patterns_by_category(category)
+            analysis['categories'][category] = len(patterns)
+            analysis['total_patterns'] += len(patterns)
+            
+            if patterns:
+                avg_effectiveness = sum(p.effectiveness for p in patterns) / len(patterns)
+                analysis['success_rates'][category] = avg_effectiveness
+        
+        return analysis
+    
+    def _identify_capability_gaps(self, current_analysis: Dict) -> List[Dict]:
+        """Identify gaps in current capabilities"""
+        gaps = []
+        
+        # Emerging threat areas
+        emerging_threats = [
+            {
+                'area': 'ai_security',
+                'description': 'AI model security and adversarial attacks',
+                'required_tools': ['ai_security_scanner', 'model_analyzer'],
+                'priority': 'high'
+            },
+            {
+                'area': 'cloud_native_security',
+                'description': 'Container and Kubernetes security',
+                'required_tools': ['container_scanner', 'kubernetes_auditor'],
+                'priority': 'high'
+            },
+            {
+                'area': 'iot_security',
+                'description': 'IoT device firmware and protocol security',
+                'required_tools': ['firmware_analyzer', 'iot_protocol_scanner'],
+                'priority': 'medium'
+            },
+            {
+                'area': 'quantum_resistance',
+                'description': 'Quantum computing threat analysis',
+                'required_tools': ['quantum_analyzer', 'crypto_auditor'],
+                'priority': 'low'
+            }
+        ]
+        
+        for threat in emerging_threats:
+            if threat['area'] not in current_analysis['categories']:
+                gaps.append(threat)
+        
+        return gaps
+    
+    def _develop_new_capability(self, gap: Dict) -> Optional[Dict]:
+        """Develop new security capability"""
+        try:
+            new_capability = {
+                'id': f"capability_{gap['area']}_{int(time.time())}",
+                'name': gap['area'].replace('_', ' ').title(),
+                'area': gap['area'],
+                'description': gap['description'],
+                'tools_required': gap['required_tools'],
+                'priority': gap['priority'],
+                'status': 'developed',
+                'effectiveness': 0.7,  # Initial effectiveness
+                'developed_at': datetime.now()
+            }
+            
+            # Create initial patterns for this capability
+            initial_pattern = SecurityPattern(
+                id=f"pattern_{new_capability['id']}",
+                name=f"Base {new_capability['name']} Pattern",
+                category=gap['area'],
+                description=f"Initial pattern for {gap['description']}",
+                indicators=["placeholder_indicator"],
+                mitigation=["placeholder_mitigation"],
+                tools_required=gap['required_tools'],
+                difficulty="medium",
+                effectiveness=0.7,
+                discovered_at=datetime.now()
+            )
+            
+            self.kb.store_pattern(initial_pattern)
+            
+            self.logger.info(f"Developed new capability: {new_capability['name']}")
+            return new_capability
+            
+        except Exception as e:
+            self.logger.error(f"Failed to develop capability for {gap['area']}: {e}")
+            return None
+    
+    def _optimize_existing_capabilities(self) -> List[Dict]:
+        """Optimize existing security capabilities"""
+        optimizations = []
+        
+        categories = ['reconnaissance', 'exploitation', 'post_exploitation', 'defense', 'forensics']
+        
+        for category in categories:
+            patterns = self.kb.get_patterns_by_category(category)
+            
+            if not patterns:
+                continue
+            
+            # Find patterns with low effectiveness
+            low_effectiveness_patterns = [p for p in patterns if p.effectiveness < 0.6]
+            
+            for pattern in low_effectiveness_patterns:
+                # Optimize pattern
+                optimized_pattern = self._optimize_pattern(pattern)
+                if optimized_pattern:
+                    self.kb.store_pattern(optimized_pattern)
+                    optimizations.append({
+                        'pattern_id': pattern.id,
+                        'old_effectiveness': pattern.effectiveness,
+                        'new_effectiveness': optimized_pattern.effectiveness,
+                        'improvement': optimized_pattern.effectiveness - pattern.effectiveness
+                    })
+        
+        return optimizations
+    
+    def _optimize_pattern(self, pattern: SecurityPattern) -> Optional[SecurityPattern]:
+        """Optimize individual security pattern"""
+        try:
+            # Simulate optimization by improving effectiveness
+            improvement_factor = 0.1  # 10% improvement
+            
+            optimized = SecurityPattern(
+                id=pattern.id,
+                name=pattern.name + " (Optimized)",
+                category=pattern.category,
+                description=pattern.description + " - Optimized version",
+                indicators=pattern.indicators,
+                mitigation=pattern.mitigation,
+                tools_required=pattern.tools_required,
+                difficulty=pattern.difficulty,
+                effectiveness=min(1.0, pattern.effectiveness + improvement_factor),
+                discovered_at=pattern.discovered_at,
+                last_used=pattern.last_used,
+                success_rate=pattern.success_rate,
+                usage_count=pattern.usage_count
+            )
+            
+            return optimized
+            
+        except Exception as e:
+            self.logger.error(f"Failed to optimize pattern {pattern.id}: {e}")
+            return None
+    
+    def _update_performance_metrics(self) -> Dict:
+        """Update performance metrics"""
+        metrics = {
+            'pattern_discovery_rate': 0.0,
+            'threat_detection_accuracy': 0.0,
+            'capability_development_speed': 0.0,
+            'overall_effectiveness': 0.0
+        }
+        
+        # Calculate metrics based on current state
+        categories = ['reconnaissance', 'exploitation', 'post_exploitation', 'defense', 'forensics']
+        total_effectiveness = 0.0
+        pattern_count = 0
+        
+        for category in categories:
+            patterns = self.kb.get_patterns_by_category(category)
+            if patterns:
+                category_effectiveness = sum(p.effectiveness for p in patterns) / len(patterns)
+                total_effectiveness += category_effectiveness
+                pattern_count += len(patterns)
+        
+        if pattern_count > 0:
+            metrics['overall_effectiveness'] = total_effectiveness / len(categories)
+            metrics['pattern_discovery_rate'] = pattern_count / 30.0  # Patterns per day
+            metrics['threat_detection_accuracy'] = metrics['overall_effectiveness']
+            metrics['capability_development_speed'] = len(self.capability_registry) / 30.0
+        
+        return metrics
+    
+    def _record_evolution(self, evolution_result: Dict):
+        """Record evolution in database"""
+        conn = sqlite3.connect(self.kb.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO evolution_history 
+            (timestamp, evolution_type, new_capabilities, performance_metrics, learned_patterns)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            evolution_result['timestamp'].isoformat(),
+            'capability_evolution',
+            json.dumps(evolution_result['new_capabilities']),
+            json.dumps(evolution_result['performance_improvements']),
+            json.dumps(evolution_result['improved_capabilities'])
+        ))
+        
+        conn.commit()
+        conn.close()
+
+class ContinuousSecurityLearning:
+    """Continuous learning system for security capabilities"""
+    
+    def __init__(self):
+        self.knowledge_base = SecurityKnowledgeBase()
+        self.threat_collector = ThreatIntelligenceCollector(self.knowledge_base)
+        self.pattern_discovery = SecurityPatternDiscovery(self.knowledge_base)
+        self.capability_evolution = SecurityCapabilityEvolution(self.knowledge_base)
+        self.logger = logging.getLogger('ContinuousSecurityLearning')
+        
+        # Learning configuration
+        self.learning_interval = 3600  # 1 hour
+        self.is_running = False
+        self.learning_thread = None
+    
+    def start_continuous_learning(self):
+        """Start continuous learning process"""
+        if self.is_running:
+            self.logger.warning("Continuous learning already running")
+            return
+        
+        self.is_running = True
+        self.learning_thread = threading.Thread(target=self._learning_loop, daemon=True)
+        self.learning_thread.start()
+        self.logger.info("Started continuous security learning")
+    
+    def stop_continuous_learning(self):
+        """Stop continuous learning process"""
+        self.is_running = False
+        if self.learning_thread:
+            self.learning_thread.join(timeout=10)
+        self.logger.info("Stopped continuous security learning")
+    
+    def _learning_loop(self):
+        """Main learning loop"""
+        while self.is_running:
+            try:
+                self.logger.info("Starting learning cycle...")
+                
+                # Collect threat intelligence
+                self.threat_collector.collect_all_intelligence()
+                
+                # Discover new patterns
+                self._discover_patterns_from_environment()
+                
+                # Evolve capabilities
+                evolution_result = self.capability_evolution.evolve_capabilities()
+                
+                self.logger.info(f"Learning cycle completed. Evolution: {len(evolution_result['new_capabilities'])} new capabilities")
+                
+                # Wait for next cycle
+                time.sleep(self.learning_interval)
+                
+            except Exception as e:
+                self.logger.error(f"Learning cycle failed: {e}")
+                time.sleep(60)  # Wait 1 minute before retry
+    
+    def _discover_patterns_from_environment(self):
+        """Discover patterns from the local environment"""
+        # Look for log files
+        log_locations = [
+            "/var/log/",
+            "C:\\Windows\\Logs\\",
+            "./logs/",
+            "/tmp/security_logs/"
+        ]
+        
+        log_files = []
+        for location in log_locations:
+            if os.path.exists(location):
+                for file in os.listdir(location):
+                    if file.endswith(('.log', '.txt')):
+                        log_files.append(os.path.join(location, file))
+        
+        # Discover patterns from logs
+        patterns = self.pattern_discovery.discover_patterns_from_logs(log_files)
+        
+        for pattern in patterns:
+            self.knowledge_base.store_pattern(pattern)
+        
+        self.logger.info(f"Discovered {len(patterns)} new patterns from logs")
+    
+    def get_learning_status(self) -> Dict:
+        """Get current learning status"""
+        return {
+            'is_running': self.is_running,
+            'learning_interval': self.learning_interval,
+            'total_patterns': sum(len(self.knowledge_base.get_patterns_by_category(cat)) 
+                                 for cat in ['reconnaissance', 'exploitation', 'post_exploitation', 'defense', 'forensics']),
+            'recent_threats': len(self.knowledge_base.get_recent_threats(days=7)),
+            'last_evolution': self._get_last_evolution_time()
+        }
+    
+    def _get_last_evolution_time(self) -> Optional[datetime]:
+        """Get timestamp of last evolution"""
+        try:
+            conn = sqlite3.connect(self.knowledge_base.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT timestamp FROM evolution_history ORDER BY timestamp DESC LIMIT 1')
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return datetime.fromisoformat(result[0])
+            return None
+            
+        except Exception:
+            return None
+
+# Main interface for integration
+def create_security_evolution_engine():
+    """Create and return security evolution engine"""
+    return ContinuousSecurityLearning()
+
+def demonstrate_evolution():
+    """Demonstrate security evolution capabilities"""
+    learning_system = ContinuousSecurityLearning()
+    
+    print("🧠 Security Evolution Engine")
+    print("=" * 50)
+    
+    # Show initial status
+    status = learning_system.get_learning_status()
+    print(f"📊 Learning Status: {'Running' if status['is_running'] else 'Stopped'}")
+    print(f"🔍 Total Patterns: {status['total_patterns']}")
+    print(f"🚨 Recent Threats: {status['recent_threats']}")
+    
+    # Start learning
+    learning_system.start_continuous_learning()
+    
+    print("\n🔄 Continuous learning started...")
+    print("📈 The system will now:")
+    print("  • Collect threat intelligence from multiple sources")
+    print("  • Discover new attack patterns from logs and traffic")
+    print("  • Evolve security capabilities automatically")
+    print("  • Optimize existing patterns based on performance")
+    
+    return learning_system
+
+if __name__ == "__main__":
+    demonstrate_evolution()

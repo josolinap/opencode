@@ -1,0 +1,83 @@
+{
+  "models": [
+    {
+      "provider": "opencode",
+      "model": "big-pickle",
+      "name": "Big Pickle",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 200000,
+        "output": 128000
+      },
+      "release_date": "2025-10-17",
+      "integration_score": 100,
+      "integration_ready": true,
+      "recommended_uses": [
+        "Complex problem solving",
+        "Code analysis",
+        "Logical reasoning",
+        "API integration",
+        "File operations",
+        "External tool usage",
+        "Creative writing",
+        "Content generation",
+        "Brainstorming",
+        "Large document processing"
+      ],
+      "integration_complexity": "low"
+    },
+    {
+      "provider": "opencode",
+      "model": "grok-code",
+      "name": "Grok Code Fast 1",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": true
+      },
+      "limits": {
+        "context": 256000,
+        "output": 256000
+      },
+      "release_date": "2025-08-20",
+      "integration_score": 100,
+      "integration_ready": true,
+      "recommended_uses": [
+        "Complex problem solving",
+        "Code analysis",
+        "Logical reasoning",
+        "API integration",
+        "File operations",
+        "External tool usage",
+        "Image analysis",
+        "Document processing",
+        "Multi-modal tasks",
+        "Creative writing",
+        "Content generation",
+        "Brainstorming",
+        "Large document processing"
+      ],
+      "integration_complexity": "low"
+    }
+  ],
+  "timestamp": 1762970664.281929,
+  "version": "1.0.0"
+}

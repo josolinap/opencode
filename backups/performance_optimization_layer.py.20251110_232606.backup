@@ -1,0 +1,355 @@
+from functools import lru_cache
+'\nPerformance Optimization Layer with Predictive Routing\n\nAdvanced performance optimization system with predictive routing,\nload balancing, and intelligent resource management.\n'
+import json
+import time
+import threading
+import logging
+import statistics
+import asyncio
+from typing import Dict, List, Optional, Tuple, Any, Callable
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from collections import deque, defaultdict
+import heapq
+import numpy as np
+from enum import Enum
+logger = logging.getLogger(__name__)
+
+class TaskType(Enum):
+    """Types of tasks for routing"""
+    CODE_GENERATION = 'code_generation'
+    TEXT_ANALYSIS = 'text_analysis'
+    CREATIVE_WRITING = 'creative_writing'
+    DATA_ANALYSIS = 'data_analysis'
+    GENERAL_CHAT = 'general_chat'
+    DEBUGGING = 'debugging'
+    OPTIMIZATION = 'optimization'
+
+class Priority(Enum):
+    """Task priority levels"""
+    LOW = 1
+    NORMAL = 2
+    HIGH = 3
+    CRITICAL = 4
+
+@dataclass
+class TaskRequest:
+    """Task request for optimization"""
+    id: str
+    task_type: TaskType
+    prompt: str
+    priority: Priority
+    timeout: float
+    estimated_complexity: float
+    requirements: Dict[str, Any]
+    timestamp: float
+    callback: Optional[Callable] = None
+
+@dataclass
+class ModelPerformance:
+    """Performance metrics for a model"""
+    name: str
+    task_performance: Dict[TaskType, float]
+    avg_response_time: float
+    reliability: float
+    cost_per_request: float
+    current_load: int
+    max_concurrent: int
+    last_used: float
+    success_rate: float
+    quality_score: float
+
+    def __post_init__(self):
+        if not self.task_performance:
+            self.task_performance = {}
+
+@dataclass
+class RoutingDecision:
+    """Routing decision result"""
+    model_name: str
+    confidence: float
+    expected_response_time: float
+    expected_quality: float
+    cost_estimate: float
+    reasoning: str
+
+class PredictiveRouter:
+    """Predictive routing system using ML-based predictions"""
+
+    def __init__(self, learning_rate: float=0.1):
+        self.learning_rate = learning_rate
+        self.task_history: List[Dict] = []
+        self.model_weights: Dict[str, Dict[TaskType, float]] = defaultdict(lambda : defaultdict(float))
+        self.performance_history: Dict[str, deque] = defaultdict(lambda : deque(maxlen=100))
+        self._lock = threading.RLock()
+
+    def record_task_completion(self, task: TaskRequest, model_name: str, response_time: float, success: bool, quality: float):
+        """Record task completion for learning"""
+        with self._lock:
+            self.task_history.append({'task_type': task.task_type.value, 'model_name': model_name, 'response_time': response_time, 'success': success, 'quality': quality, 'complexity': task.estimated_complexity, 'timestamp': time.time()})
+            if success:
+                reward = quality / (response_time + 1.0)
+                self.model_weights[model_name][task.task_type] += self.learning_rate * reward
+            self.performance_history[model_name].append({'response_time': response_time, 'success': success, 'quality': quality, 'timestamp': time.time()})
+
+    def predict_performance(self, model_name: str, task_type: TaskType, complexity: float) -> Tuple[float, float, float]:
+        """Predict response time, success rate, and quality for a model-task pair"""
+        with self._lock:
+            history = list(self.performance_history[model_name])
+            if not history:
+                return (5.0, 0.8, 0.7)
+            recent_history = [h for h in history if time.time() - h['timestamp'] < 3600]
+            if recent_history:
+                avg_response_time = statistics.mean([h['response_time'] for h in recent_history])
+                success_rate = sum((1 for h in recent_history if h['success'])) / len(recent_history)
+                avg_quality = statistics.mean([h['quality'] for h in recent_history])
+            else:
+                avg_response_time = statistics.mean([h['response_time'] for h in history])
+                success_rate = sum((1 for h in history if h['success'])) / len(history)
+                avg_quality = statistics.mean([h['quality'] for h in history])
+            complexity_factor = 1.0 + (complexity - 0.5) * 0.5
+            predicted_response_time = avg_response_time * complexity_factor
+            task_weight = self.model_weights[model_name].get(task_type, 0.5)
+            predicted_quality = avg_quality * (0.5 + task_weight)
+            return (predicted_response_time, success_rate, min(1.0, predicted_quality))
+
+class LoadBalancer:
+    """Load balancer for managing concurrent requests"""
+
+    def __init__(self):
+        self.model_loads: Dict[str, int] = defaultdict(int)
+        self.request_queue: List[Tuple[float, TaskRequest]] = []
+        self.active_requests: Dict[str, TaskRequest] = {}
+        self._lock = threading.RLock()
+
+    def can_handle_request(self, model_name: str, model_performance: ModelPerformance) -> bool:
+        """Check if model can handle a new request"""
+        with self._lock:
+            current_load = self.model_loads[model_name]
+            return current_load < model_performance.max_concurrent
+
+    def add_request(self, task: TaskRequest):
+        """Add request to queue"""
+        with self._lock:
+            priority_value = -task.priority.value
+            heapq.heappush(self.request_queue, (priority_value, time.time(), task))
+
+    def get_next_request(self) -> Optional[TaskRequest]:
+        """Get next request from queue"""
+        with self._lock:
+            if self.request_queue:
+                (_, _, task) = heapq.heappop(self.request_queue)
+                return task
+            return None
+
+    def start_request(self, model_name: str, task: TaskRequest):
+        """Mark request as started for a model"""
+        with self._lock:
+            self.model_loads[model_name] += 1
+            self.active_requests[task.id] = (model_name, time.time())
+
+    def finish_request(self, task_id: str):
+        """Mark request as finished"""
+        with self._lock:
+            if task_id in self.active_requests:
+                (model_name, _) = self.active_requests.pop(task_id)
+                self.model_loads[model_name] = max(0, self.model_loads[model_name] - 1)
+
+    def get_load_status(self) -> Dict[str, Any]:
+        """Get current load status"""
+        with self._lock:
+            return {'model_loads': dict(self.model_loads), 'queue_size': len(self.request_queue), 'active_requests': len(self.active_requests)}
+
+class PerformanceOptimizationLayer:
+    """Main performance optimization layer"""
+
+    def __init__(self, config_path: str='performance_config.json'):
+        self.config_path = Path(config_path)
+        self.models: Dict[str, ModelPerformance] = {}
+        self.predictive_router = PredictiveRouter()
+        self.load_balancer = LoadBalancer()
+        self.task_queue: asyncio.Queue = None
+        self.worker_tasks: List[asyncio.Task] = []
+        self.optimization_enabled = True
+        self.auto_tuning_enabled = True
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.total_response_time = 0.0
+        self._load_config()
+        self._start_optimization_loop()
+
+    def _load_config(self):
+        """Load performance configuration"""
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+                    for (model_name, model_config) in config.get('models', {}).items():
+                        self.models[model_name] = ModelPerformance(name=model_name, task_performance={TaskType(t): score for (t, score) in model_config.get('task_performance', {}).items()}, avg_response_time=model_config.get('avg_response_time', 5.0), reliability=model_config.get('reliability', 0.8), cost_per_request=model_config.get('cost_per_request', 0.0), current_load=0, max_concurrent=model_config.get('max_concurrent', 5), last_used=0, success_rate=model_config.get('success_rate', 0.8), quality_score=model_config.get('quality_score', 0.7))
+                logger.info(f'Loaded configuration for {len(self.models)} models')
+        except Exception as e:
+            logger.warning(f'Could not load performance config: {e}')
+            self._create_default_config()
+
+    def _create_default_config(self):
+        """Create default configuration"""
+        default_models = {'opencode/big-pickle': {'task_performance': {'code_generation': 0.9, 'text_analysis': 0.7, 'creative_writing': 0.6, 'data_analysis': 0.8, 'general_chat': 0.7, 'debugging': 0.9, 'optimization': 0.8}, 'avg_response_time': 4.0, 'reliability': 0.85, 'cost_per_request': 0.0, 'max_concurrent': 3, 'success_rate': 0.85, 'quality_score': 0.8}, 'opencode/grok-code': {'task_performance': {'code_generation': 0.95, 'text_analysis': 0.75, 'creative_writing': 0.65, 'data_analysis': 0.85, 'general_chat': 0.75, 'debugging': 0.95, 'optimization': 0.9}, 'avg_response_time': 3.5, 'reliability': 0.9, 'cost_per_request': 0.0, 'max_concurrent': 3, 'success_rate': 0.9, 'quality_score': 0.85}}
+        for (model_name, config) in default_models.items():
+            self.models[model_name] = ModelPerformance(name=model_name, task_performance={TaskType(t): score for (t, score) in config['task_performance'].items()}, avg_response_time=config['avg_response_time'], reliability=config['reliability'], cost_per_request=config['cost_per_request'], current_load=0, max_concurrent=config['max_concurrent'], last_used=0, success_rate=config['success_rate'], quality_score=config['quality_score'])
+
+    def _save_config(self):
+        """Save performance configuration"""
+        try:
+            config = {'models': {}, 'optimization_enabled': self.optimization_enabled, 'auto_tuning_enabled': self.auto_tuning_enabled}
+            for (model_name, performance) in self.models.items():
+                config['models'][model_name] = {'task_performance': {t.value: score for (t, score) in performance.task_performance.items()}, 'avg_response_time': performance.avg_response_time, 'reliability': performance.reliability, 'cost_per_request': performance.cost_per_request, 'max_concurrent': performance.max_concurrent, 'success_rate': performance.success_rate, 'quality_score': performance.quality_score}
+            with open(self.config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            logger.warning(f'Could not save performance config: {e}')
+
+    def classify_task(self, prompt: str) -> TaskType:
+        """Classify task type from prompt"""
+        prompt_lower = prompt.lower()
+        task_keywords = {TaskType.CODE_GENERATION: ['code', 'function', 'class', 'program', 'script', 'implement', 'write code'], TaskType.TEXT_ANALYSIS: ['analyze', 'summarize', 'extract', 'sentiment', 'classify', 'categorize'], TaskType.CREATIVE_WRITING: ['story', 'poem', 'creative', 'write', 'imagine', 'narrative'], TaskType.DATA_ANALYSIS: ['data', 'statistics', 'analyze data', 'dataset', 'metrics', 'trends'], TaskType.DEBUGGING: ['debug', 'error', 'bug', 'fix', 'issue', 'problem', 'broken'], TaskType.OPTIMIZATION: ['optimize', 'improve', 'performance', 'efficient', 'better', 'enhance']}
+        scores = {}
+        for (task_type, keywords) in task_keywords.items():
+            score = sum((1 for keyword in keywords if keyword in prompt_lower))
+            scores[task_type] = score
+        if max(scores.values()) == 0:
+            return TaskType.GENERAL_CHAT
+        return max(scores, key=scores.get)
+
+    def estimate_complexity(self, prompt: str) -> float:
+        """Estimate task complexity from prompt (0.0 to 1.0)"""
+        complexity = 0.5
+        length_factor = min(1.0, len(prompt) / 1000)
+        complexity += length_factor * 0.2
+        complex_keywords = ['algorithm', 'optimization', 'architecture', 'system', 'framework', 'integration', 'deployment', 'scalability', 'performance', 'security']
+        complexity_bonus = sum((0.1 for keyword in complex_keywords if keyword in prompt.lower()))
+        complexity += min(0.3, complexity_bonus)
+        technical_terms = ['api', 'database', 'machine learning', 'neural network', 'distributed', 'microservices', 'container', 'kubernetes', 'cloud', 'blockchain']
+        technical_bonus = sum((0.05 for term in technical_terms if term in prompt.lower()))
+        complexity += min(0.2, technical_bonus)
+        return min(1.0, complexity)
+
+    @lru_cache(maxsize=128)
+    def route_request(self, prompt: str, priority: Priority=Priority.NORMAL, timeout: float=30.0, requirements: Dict[str, Any]=None) -> RoutingDecision:
+        """Route a request to the optimal model"""
+        if not self.optimization_enabled:
+            if self.models:
+                model_name = next(iter(self.models.keys()))
+                return RoutingDecision(model_name=model_name, confidence=0.5, expected_response_time=5.0, expected_quality=0.7, cost_estimate=0.0, reasoning='Optimization disabled, using default model')
+        task_type = self.classify_task(prompt)
+        complexity = self.estimate_complexity(prompt)
+        model_scores = []
+        for (model_name, performance) in self.models.items():
+            if not self.load_balancer.can_handle_request(model_name, performance):
+                continue
+            task_score = performance.task_performance.get(task_type, 0.5)
+            (pred_time, pred_success, pred_quality) = self.predictive_router.predict_performance(model_name, task_type, complexity)
+            load_factor = 1.0 - performance.current_load / performance.max_concurrent
+            reliability_factor = performance.reliability
+            cost_factor = 1.0 - min(1.0, performance.cost_per_request / 0.1)
+            overall_score = task_score * 0.3 + pred_quality * 0.25 + reliability_factor * 0.2 + load_factor * 0.15 + cost_factor * 0.1
+            model_scores.append((overall_score, model_name, pred_time, pred_quality, performance.cost_per_request, f'Task score: {task_score:.2f}, Quality: {pred_quality:.2f}, Load: {load_factor:.2f}'))
+        if not model_scores:
+            return RoutingDecision(model_name='', confidence=0.0, expected_response_time=0.0, expected_quality=0.0, cost_estimate=0.0, reasoning='No models available')
+        model_scores.sort(key=lambda x: x[0], reverse=True)
+        (best_score, best_model, pred_time, pred_quality, cost, reasoning) = model_scores[0]
+        return RoutingDecision(model_name=best_model, confidence=best_score, expected_response_time=pred_time, expected_quality=pred_quality, cost_estimate=cost, reasoning=reasoning)
+
+    def record_performance(self, model_name: str, task_type: TaskType, response_time: float, success: bool, quality: float):
+        """Record performance data for learning"""
+        if model_name in self.models:
+            performance = self.models[model_name]
+            alpha = 0.1
+            performance.avg_response_time = (1 - alpha) * performance.avg_response_time + alpha * response_time
+            performance.quality_score = (1 - alpha) * performance.quality_score + alpha * quality
+            if success:
+                performance.success_rate = (1 - alpha) * performance.success_rate + alpha * 1.0
+            else:
+                performance.success_rate = (1 - alpha) * performance.success_rate + alpha * 0.0
+            performance.last_used = time.time()
+        task = TaskRequest(id='recorded', task_type=task_type, prompt='', priority=Priority.NORMAL, timeout=0, estimated_complexity=0.5, requirements={}, timestamp=time.time())
+        self.predictive_router.record_task_completion(task, model_name, response_time, success, quality)
+        self.total_requests += 1
+        if success:
+            self.successful_requests += 1
+        self.total_response_time += response_time
+        if self.auto_tuning_enabled and self.total_requests % 50 == 0:
+            self._auto_tune()
+
+    def _auto_tune(self):
+        """Automatically tune performance parameters"""
+        try:
+            for (model_name, performance) in self.models.items():
+                if performance.success_rate > 0.9:
+                    performance.max_concurrent = min(10, performance.max_concurrent + 1)
+                elif performance.success_rate < 0.7:
+                    performance.max_concurrent = max(1, performance.max_concurrent - 1)
+                for task_type in TaskType:
+                    (pred_time, pred_success, pred_quality) = self.predictive_router.predict_performance(model_name, task_type, 0.5)
+                    if pred_success > 0.8 and pred_time < 5.0:
+                        current_score = performance.task_performance.get(task_type, 0.5)
+                        performance.task_performance[task_type] = min(1.0, current_score + 0.05)
+                    elif pred_success < 0.6 or pred_time > 10.0:
+                        current_score = performance.task_performance.get(task_type, 0.5)
+                        performance.task_performance[task_type] = max(0.1, current_score - 0.05)
+            self._save_config()
+            logger.info('Auto-tuning completed')
+        except Exception as e:
+            logger.error(f'Error in auto-tuning: {e}')
+
+    def _start_optimization_loop(self):
+        """Start background optimization loop"""
+
+        def optimization_loop():
+            while True:
+                try:
+                    current_time = time.time()
+                    load_status = self.load_balancer.get_load_status()
+                    for (model_name, load) in load_status['model_loads'].items():
+                        if model_name in self.models:
+                            self.models[model_name].current_load = load
+                    time.sleep(60)
+                except Exception as e:
+                    logger.error(f'Error in optimization loop: {e}')
+                    time.sleep(60)
+        thread = threading.Thread(target=optimization_loop, daemon=True)
+        thread.start()
+
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get comprehensive performance statistics"""
+        global_success_rate = self.successful_requests / max(1, self.total_requests)
+        global_avg_response_time = self.total_response_time / max(1, self.total_requests)
+        return {'global_stats': {'total_requests': self.total_requests, 'successful_requests': self.successful_requests, 'success_rate': global_success_rate, 'avg_response_time': global_avg_response_time}, 'model_stats': {name: {'avg_response_time': perf.avg_response_time, 'success_rate': perf.success_rate, 'quality_score': perf.quality_score, 'current_load': perf.current_load, 'max_concurrent': perf.max_concurrent, 'reliability': perf.reliability, 'task_performance': {t.value: score for (t, score) in perf.task_performance.items()}} for (name, perf) in self.models.items()}, 'load_balancer': self.load_balancer.get_load_status(), 'optimization_enabled': self.optimization_enabled, 'auto_tuning_enabled': self.auto_tuning_enabled}
+
+    def enable_optimization(self):
+        """Enable performance optimization"""
+        self.optimization_enabled = True
+        logger.info('Performance optimization enabled')
+
+    def disable_optimization(self):
+        """Disable performance optimization"""
+        self.optimization_enabled = False
+        logger.info('Performance optimization disabled')
+
+    def enable_auto_tuning(self):
+        """Enable automatic tuning"""
+        self.auto_tuning_enabled = True
+        logger.info('Auto-tuning enabled')
+
+    def disable_auto_tuning(self):
+        """Disable automatic tuning"""
+        self.auto_tuning_enabled = False
+        logger.info('Auto-tuning disabled')
+_performance_layer = None
+
+def get_performance_layer() -> PerformanceOptimizationLayer:
+    """Get the global performance optimization layer instance"""
+    global _performance_layer
+    if _performance_layer is None:
+        _performance_layer = PerformanceOptimizationLayer()
+    return _performance_layer

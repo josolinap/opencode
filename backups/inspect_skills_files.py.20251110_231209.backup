@@ -1,0 +1,165 @@
+import os
+import sys
+import textwrap
+import importlib
+import importlib.util
+import logging
+from pprint import pprint
+from functools import lru_cache
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+ROOT = '/app/neo_tui_assistant_1544/neo-clone'
+SKILLS_DIR = os.path.join(ROOT, 'skills')
+SKILLS_INIT = os.path.join(SKILLS_DIR, '__init__.py')
+
+def read_file(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        return f'<Error reading {path}: {e}>'
+
+def scan_for_terms(content, terms):
+    hits = {}
+    lower = content.lower()
+    for t in terms:
+        hits[t] = t.lower() in lower
+    return hits
+
+def print_header(title):
+    print('\n' + '=' * 80)
+    print(title)
+    print('=' * 80 + '\n')
+
+def safe_import_skills_package():
+    if os.path.abspath(ROOT) in sys.path:
+        sys.path.remove(os.path.abspath(ROOT))
+    sys.path.insert(0, os.path.abspath(ROOT))
+    importlib.invalidate_caches()
+    try:
+        pkg = importlib.import_module('skills')
+        print("Imported package 'skills' successfully.")
+        return pkg
+    except Exception as e:
+        print("Importing 'skills' failed:", e)
+        return None
+
+def force_load_by_path(name='skills_forced', path=SKILLS_INIT):
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        module.__path__ = [os.path.dirname(path)]
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        print(f"Force-loaded module {name} from {path} as package (file: {getattr(module, '__file__', None)})")
+        return module
+    except Exception as e:
+        print('Force-load failed:', e)
+        return None
+
+def inspect_file_contents():
+    print_header('skills/__init__.py CONTENT')
+    print(read_file(SKILLS_INIT)[:4000])
+    print('\n... (truncated) ...\n')
+    print_header('Per-skill files scan for registration patterns')
+    terms = ['default_registry', 'register_skill', 'register(', 'DEFAULT_REGISTRY', 'registry', 'skill_registry']
+    for fname in sorted(os.listdir(SKILLS_DIR)):
+        if not fname.endswith('.py'):
+            continue
+        fpath = os.path.join(SKILLS_DIR, fname)
+        content = read_file(fpath)
+        print(f'--- {fname} ---')
+        print(textwrap.shorten(content, width=400, placeholder=' ...'))
+        hits = scan_for_terms(content, terms)
+        print('Pattern hits:', hits)
+        print()
+
+@lru_cache(maxsize=128)
+def runtime_inspection(pkg):
+    print_header('RUNTIME INSPECTION')
+    if pkg is None:
+        print('Package not imported.')
+        return
+    print('package __file__:', getattr(pkg, '__file__', None))
+    print('package __path__:', getattr(pkg, '__path__', None))
+    attrs = sorted([k for k in dir(pkg) if not k.startswith('_')])
+    print('Top-level attrs:', attrs)
+    for attr in ('DEFAULT_REGISTRY', 'registry', 'skill_registry', 'SKILL_REGISTRY'):
+        print(f'Has attribute {attr}? ->', hasattr(pkg, attr))
+    for attr in attrs:
+        try:
+            val = getattr(pkg, attr)
+            if isinstance(val, type):
+                print(f'Class found: {attr} -> {val}')
+        except Exception:
+            pass
+
+def inspect_skill_modules_imported():
+    print_header('INSPECT IMPORTED skills.* MODULES')
+    mods = [k for k in sys.modules.keys() if k == 'skills' or k.startswith('skills.')]
+    pprint(mods)
+    for m in mods:
+        mod = sys.modules.get(m)
+        print(f"\nModule: {m}, file: {getattr(mod, '__file__', None)}")
+        try:
+            src = read_file(getattr(mod, '__file__'))
+            for term in ('DEFAULT_REGISTRY', 'register_skill', 'register('):
+                if term in src:
+                    print(f"  Found term '{term}' in source.")
+        except Exception:
+            pass
+
+def try_invoking_registry(pkg):
+    print_header('TRY LOCATING/USING REGISTRY OBJECT')
+    if pkg is None:
+        print('No package object to inspect.')
+        return
+    candidates = []
+    for name in ('DEFAULT_REGISTRY', 'registry', 'skill_registry', 'SKILL_REGISTRY'):
+        if hasattr(pkg, name):
+            candidates.append((name, getattr(pkg, name)))
+    for (k, v) in vars(pkg).items():
+        if hasattr(v, 'list_skills') and hasattr(v, 'execute_skill'):
+            candidates.append((k, v))
+    if not candidates:
+        print('No registry-like object found on package.')
+        return
+    for (name, obj) in candidates:
+        print(f'Candidate registry: {name} -> {obj}')
+        try:
+            skills = obj.list_skills()
+            print('list_skills() ->', skills)
+        except Exception as e:
+            print('Calling list_skills failed:', e)
+            print('Has methods:', hasattr(obj, 'list_skills'), hasattr(obj, 'execute_skill'), hasattr(obj, 'register_skill'))
+            print('Dir:', [a for a in dir(obj) if not a.startswith('_')][:40])
+
+def main():
+    print_header('INSPECT SKILLS PACKAGE FILES & RUNTIME')
+    if not os.path.exists(SKILLS_INIT):
+        print(f'Skills __init__ not found at {SKILLS_INIT}')
+        return
+    inspect_file_contents()
+    pkg = safe_import_skills_package()
+    runtime_inspection(pkg)
+    inspect_skill_modules_imported()
+    try_invoking_registry(pkg)
+    forced = force_load_by_path('skills_forced_path', SKILLS_INIT)
+    if forced:
+        print_header('INSPECT FORCED MODULE')
+        runtime_inspection(forced)
+        for fname in sorted(os.listdir(SKILLS_DIR)):
+            if not fname.endswith('.py') or fname == '__init__.py':
+                continue
+            modname = f'skills_forced_path.{os.path.splitext(fname)[0]}'
+            try:
+                spec = importlib.util.spec_from_file_location(modname, os.path.join(SKILLS_DIR, fname))
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[modname] = module
+                module.__package__ = 'skills_forced_path'
+                spec.loader.exec_module(module)
+                print('Loaded submodule into', modname, '->', getattr(module, '__file__', None))
+            except Exception as e:
+                print('Failed loading submodule', fname, e)
+        try_invoking_registry(forced)
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,136 @@
+from skills import BaseSkill
+from functools import lru_cache
+
+class TextAnalysisSkill(BaseSkill):
+
+    def __init__(self):
+        self._cache = {}
+        self._max_cache_size = 50
+
+    @property
+    def name(self):
+        return 'text_analysis'
+
+    @property
+    def description(self):
+        return 'Advanced text analysis with sentiment classification, keyword extraction, summarization, and content moderation.'
+
+    @property
+    def parameters(self):
+        return {'text': 'string - The text to analyze', 'analysis_type': 'string - Type of analysis (sentiment, keywords, summary, moderation, all). Default: all', 'max_keywords': 'integer - Maximum number of keywords to extract (default: 10)', 'summary_length': 'string - Summary length (short, medium, long). Default: medium'}
+
+    @property
+    def example_usage(self):
+        return 'Analyze the sentiment and extract keywords from a customer review.'
+
+    def execute(self, params):
+        text = params.get('text', '')
+        analysis_type = params.get('analysis_type', 'all')
+        max_keywords = params.get('max_keywords', 10)
+        summary_length = params.get('summary_length', 'medium')
+        import hashlib
+        cache_key = hashlib.md5(f'{text}_{analysis_type}_{max_keywords}_{summary_length}'.encode()).hexdigest()
+        if cache_key in self._cache:
+            cached_result = self._cache[cache_key]
+            cached_result['cached'] = True
+            return cached_result
+        if not text.strip():
+            return {'error': 'No text provided for analysis'}
+        try:
+            from skills.enhanced_opencode_integration import EnhancedOpenCodeIntegration
+            integration = EnhancedOpenCodeIntegration()
+            prompt = self._build_analysis_prompt(text, analysis_type, max_keywords, summary_length)
+            result = integration.generate_response(prompt=prompt, model='opencode/big-pickle', max_tokens=500)
+            if result.get('success'):
+                response = self._parse_opencode_response(result.get('response', ''), analysis_type)
+                self._add_to_cache(cache_key, response)
+                return response
+            else:
+                response = self._fallback_analysis(text, analysis_type, max_keywords, summary_length)
+                self._add_to_cache(cache_key, response)
+                return response
+        except Exception as e:
+            response = self._fallback_analysis(text, analysis_type, max_keywords, summary_length)
+            self._add_to_cache(cache_key, response)
+            return response
+
+    def _build_analysis_prompt(self, text, analysis_type, max_keywords, summary_length):
+        """Build comprehensive analysis prompt."""
+        base_prompt = f'\n        Analyze the following text and provide a detailed analysis:\n\n        Text: "{text}"\n\n        '
+        if analysis_type in ['sentiment', 'all']:
+            base_prompt += '\n        Sentiment Analysis:\n        - Determine the overall sentiment (positive, negative, neutral)\n        - Provide a confidence score (0-1)\n        - Identify key emotional indicators\n        '
+        if analysis_type in ['keywords', 'all']:
+            base_prompt += f'\n        Keyword Extraction:\n        - Extract up to {max_keywords} most important keywords/phrases\n        - Rank them by relevance\n        - Include both single words and phrases\n        '
+        if analysis_type in ['summary', 'all']:
+            length_guide = {'short': '1-2 sentences', 'medium': '3-5 sentences', 'long': 'comprehensive summary'}
+            base_prompt += f"\n        Text Summarization:\n        - Provide a {length_guide.get(summary_length, 'medium')} summary\n        - Capture the main points and key information\n        - Maintain objectivity\n        "
+        if analysis_type in ['moderation', 'all']:
+            base_prompt += '\n        Content Moderation:\n        - Check for inappropriate content (hate speech, violence, etc.)\n        - Assess toxicity level (0-1, where 1 is highly toxic)\n        - Flag any concerning elements\n        '
+        base_prompt += "\n        Provide the analysis in a structured JSON format with the following keys as applicable:\n        - sentiment, confidence, emotional_indicators\n        - keywords (array of objects with 'word' and 'relevance' keys)\n        - summary\n        - moderation_score, flagged_content\n\n        Return only the JSON object.\n        "
+        return base_prompt
+
+    def _parse_opencode_response(self, response, analysis_type):
+        """Parse the OpenCode response into structured data."""
+        try:
+            import json
+            import re
+            json_match = re.search('\\{.*\\}', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                return {'analysis_type': analysis_type, 'model_used': 'opencode/big-pickle', **data}
+        except:
+            pass
+        return self._fallback_analysis(response, analysis_type, 10, 'medium')
+
+    def _add_to_cache(self, key, value):
+        """Add result to cache with size management"""
+        if len(self._cache) >= self._max_cache_size:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+        self._cache[key] = value.copy()
+        self._cache[key]['cached'] = False
+
+    @lru_cache(maxsize=128)
+    def _fallback_analysis(self, text, analysis_type, max_keywords, summary_length):
+        """Basic fallback analysis using keyword matching."""
+        result = {'analysis_type': analysis_type, 'model_used': 'fallback_keyword_analysis'}
+        text_lower = text.lower()
+        if analysis_type in ['sentiment', 'all']:
+            positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'love', 'like', 'best', 'awesome', 'fantastic']
+            negative_words = ['bad', 'terrible', 'awful', 'hate', 'worst', 'horrible', 'disgusting', 'poor', 'ugly', 'stupid']
+            pos_count = sum((1 for word in positive_words if word in text_lower))
+            neg_count = sum((1 for word in negative_words if word in text_lower))
+            if pos_count > neg_count:
+                sentiment = 'positive'
+                confidence = min(0.5 + (pos_count - neg_count) * 0.1, 0.95)
+            elif neg_count > pos_count:
+                sentiment = 'negative'
+                confidence = min(0.5 + (neg_count - pos_count) * 0.1, 0.95)
+            else:
+                sentiment = 'neutral'
+                confidence = 0.5
+            result.update({'sentiment': sentiment, 'confidence': confidence, 'emotional_indicators': f'Positive words: {pos_count}, Negative words: {neg_count}'})
+        if analysis_type in ['keywords', 'all']:
+            words = text.lower().split()
+            word_freq = {}
+            for word in words:
+                word = word.strip('.,!?')
+                if len(word) > 3:
+                    word_freq[word] = word_freq.get(word, 0) + 1
+            keywords = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:max_keywords]
+            result['keywords'] = [{'word': word, 'relevance': freq} for (word, freq) in keywords]
+        if analysis_type in ['summary', 'all']:
+            sentences = text.split('.')
+            if summary_length == 'short':
+                summary = sentences[0].strip() if sentences else text[:100]
+            elif summary_length == 'long':
+                summary = text
+            else:
+                summary = '. '.join(sentences[:3]).strip() if len(sentences) > 3 else text
+            result['summary'] = summary
+        if analysis_type in ['moderation', 'all']:
+            toxic_words = ['hate', 'kill', 'stupid', 'idiot', 'damn', 'hell']
+            toxic_count = sum((1 for word in toxic_words if word in text_lower))
+            moderation_score = min(toxic_count * 0.2, 1.0)
+            result.update({'moderation_score': moderation_score, 'flagged_content': toxic_count > 0})
+        return result

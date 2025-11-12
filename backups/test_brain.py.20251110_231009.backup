@@ -1,0 +1,68 @@
+from functools import lru_cache
+print('Script starting...')
+import sys
+import json
+import os
+sys.path.insert(0, '.')
+print('Importing modules...')
+try:
+    from config_opencode import load_config, translate_opencode_model_to_neo
+    print('config_opencode imported')
+except Exception as e:
+    print(f'Error importing config_opencode: {e}')
+    sys.exit(1)
+try:
+    from brain_opencode import OpencodeBrain
+    print('brain_opencode imported')
+except Exception as e:
+    print(f'Error importing brain_opencode: {e}')
+    sys.exit(1)
+try:
+    from skills import SkillRegistry
+    print('skills imported')
+except Exception as e:
+    print(f'Error importing skills: {e}')
+    sys.exit(1)
+
+@lru_cache(maxsize=128)
+def main():
+    print('Starting test_brain.py')
+    data = {'input': 'hi who are you, and what can you do?', 'context': '', 'session_id': 'test_session', 'model': None}
+    print('Loading config...')
+    try:
+        config = load_config()
+        print('Config loaded successfully')
+    except Exception as e:
+        print(f'Error loading config: {e}')
+        return
+    if data.get('model'):
+        (provider, model_name) = translate_opencode_model_to_neo(data['model'])
+        config.provider = provider
+        config.model_name = model_name
+        config.opencode_model = data['model']
+    print(f'Config loaded: provider={config.provider}, model={config.model_name}')
+    print('Loading skills...')
+    try:
+        skills = SkillRegistry()
+        print('Skills loaded successfully')
+    except Exception as e:
+        print(f'Error loading skills: {e}')
+        return
+    print('Initializing brain...')
+    try:
+        brain = OpencodeBrain(config, skills)
+        print('Brain initialized successfully')
+    except Exception as e:
+        print(f'Error initializing brain: {e}')
+        return
+    print('Sending message...')
+    try:
+        response = brain.send_message(data['input'])
+        print('Message sent successfully')
+    except Exception as e:
+        print(f'Error sending message: {e}')
+        return
+    result = {'response': response, 'status': 'success', 'model_used': f'{config.provider}/{config.model_name}'}
+    print('Result:', json.dumps(result, indent=2))
+if __name__ == '__main__':
+    main()

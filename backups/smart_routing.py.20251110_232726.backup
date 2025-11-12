@@ -1,0 +1,471 @@
+from functools import lru_cache
+'\nsmart_routing.py - Advanced Context-Aware Smart Routing System\n\nProvides intelligent routing of requests to optimal models and skills based on\ncontext analysis, performance metrics, learning patterns, and real-time feedback.\n'
+import time
+import logging
+import json
+import re
+import hashlib
+from typing import Dict, List, Any, Optional, Tuple, Union
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from pathlib import Path
+import statistics
+import threading
+logger = logging.getLogger(__name__)
+
+@dataclass
+class RoutingContext:
+    """Context information for routing decisions"""
+    user_input: str
+    conversation_history: List[Dict[str, Any]] = field(default_factory=list)
+    user_preferences: Dict[str, Any] = field(default_factory=dict)
+    session_metadata: Dict[str, Any] = field(default_factory=dict)
+    time_of_day: str = ''
+    urgency: str = 'normal'
+    complexity_score: float = 0.0
+    domain: str = 'general'
+    language: str = 'en'
+    previous_interactions: List[str] = field(default_factory=list)
+
+@dataclass
+class ModelCapability:
+    """Model capability definition"""
+    model_id: str
+    strengths: List[str]
+    weaknesses: List[str]
+    specialties: List[str]
+    max_tokens: int
+    cost_per_token: float
+    average_response_time: float
+    reliability_score: float
+    supported_languages: List[str]
+    context_window: int
+    last_updated: float
+
+@dataclass
+class SkillCapability:
+    """Skill capability definition"""
+    skill_name: str
+    description: str
+    input_types: List[str]
+    output_types: List[str]
+    complexity_required: float
+    optimal_models: List[str]
+    dependencies: List[str]
+    execution_time_avg: float
+    success_rate: float
+    resource_usage: Dict[str, float]
+
+@dataclass
+class RoutingDecision:
+    """Routing decision result"""
+    selected_model: str
+    selected_skills: List[str]
+    confidence_score: float
+    reasoning: List[str]
+    alternatives: List[Dict[str, Any]]
+    estimated_time: float
+    estimated_cost: float
+    routing_metadata: Dict[str, Any]
+
+@dataclass
+class RoutingPerformance:
+    """Performance tracking for routing decisions"""
+    decision_id: str
+    timestamp: float
+    context_hash: str
+    selected_model: str
+    selected_skills: List[str]
+    actual_response_time: float
+    actual_cost: float
+    success: bool
+    user_satisfaction: Optional[float] = None
+    error: Optional[str] = None
+
+class SmartRouter:
+    """Advanced context-aware routing system"""
+
+    def __init__(self, storage_path: str='smart_routing.json'):
+        self.storage_path = Path(storage_path)
+        self.models: Dict[str, ModelCapability] = {}
+        self.skills: Dict[str, SkillCapability] = {}
+        self.routing_history: deque = deque(maxlen=10000)
+        self.performance_metrics: Dict[str, deque] = defaultdict(lambda : deque(maxlen=1000))
+        self.context_patterns: Dict[str, List[RoutingPerformance]] = defaultdict(list)
+        self.routing_weights: Dict[str, float] = defaultdict(float)
+        self.context_embeddings: Dict[str, List[float]] = {}
+        self.success_patterns: Dict[str, float] = defaultdict(float)
+        self.routing_config = {'max_alternatives': 3, 'min_confidence_threshold': 0.6, 'cost_sensitivity': 0.3, 'speed_sensitivity': 0.4, 'quality_sensitivity': 0.3, 'learning_rate': 0.1, 'pattern_recognition_window': 100, 'adaptation_threshold': 10}
+        self._initialize_known_capabilities()
+        self._load_routing_data()
+
+    def _initialize_known_capabilities(self):
+        """Initialize known model and skill capabilities"""
+        self.models['opencode/big-pickle'] = ModelCapability(model_id='opencode/big-pickle', strengths=['general_reasoning', 'text_generation', 'analysis', 'coding'], weaknesses=['specialized_domains', 'real_time_data'], specialties=['general_assistance', 'coding_help', 'analysis'], max_tokens=8192, cost_per_token=0.0, average_response_time=1.5, reliability_score=0.85, supported_languages=['en', 'python', 'javascript'], context_window=8192, last_updated=time.time())
+        self.models['opencode/grok-code'] = ModelCapability(model_id='opencode/grok-code', strengths=['coding', 'debugging', 'code_review', 'technical_analysis'], weaknesses=['creative_writing', 'general_conversation'], specialties=['software_development', 'debugging', 'code_optimization'], max_tokens=4096, cost_per_token=0.0, average_response_time=1.2, reliability_score=0.9, supported_languages=['python', 'javascript', 'java', 'cpp', 'go'], context_window=4096, last_updated=time.time())
+        self.skills['code_generation'] = SkillCapability(skill_name='code_generation', description='Generate code in various programming languages', input_types=['text', 'requirements', 'specifications'], output_types=['code', 'documentation'], complexity_required=0.7, optimal_models=['opencode/grok-code', 'opencode/big-pickle'], dependencies=[], execution_time_avg=2.0, success_rate=0.88, resource_usage={'cpu': 0.3, 'memory': 0.2})
+        self.skills['text_analysis'] = SkillCapability(skill_name='text_analysis', description='Analyze and process text content', input_types=['text', 'documents'], output_types=['analysis', 'summary', 'insights'], complexity_required=0.4, optimal_models=['opencode/big-pickle'], dependencies=[], execution_time_avg=1.0, success_rate=0.92, resource_usage={'cpu': 0.2, 'memory': 0.1})
+        self.skills['data_inspection'] = SkillCapability(skill_name='data_inspection', description='Inspect and analyze data structures', input_types=['data', 'files', 'structures'], output_types=['analysis', 'reports', 'visualizations'], complexity_required=0.5, optimal_models=['opencode/big-pickle'], dependencies=[], execution_time_avg=1.5, success_rate=0.85, resource_usage={'cpu': 0.4, 'memory': 0.3})
+        self.skills['web_search'] = SkillCapability(skill_name='web_search', description='Search and retrieve web information', input_types=['queries', 'keywords'], output_types=['search_results', 'information'], complexity_required=0.3, optimal_models=['opencode/big-pickle'], dependencies=['internet_access'], execution_time_avg=3.0, success_rate=0.78, resource_usage={'cpu': 0.2, 'memory': 0.1})
+
+    def _load_routing_data(self):
+        """Load historical routing data"""
+        try:
+            if self.storage_path.exists():
+                with open(self.storage_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for (model_id, metrics) in data.get('performance_metrics', {}).items():
+                    self.performance_metrics[model_id].extend(metrics)
+                self.routing_weights.update(data.get('routing_weights', {}))
+                self.success_patterns.update(data.get('success_patterns', {}))
+                logger.info(f'Loaded routing data for {len(self.models)} models')
+        except Exception as e:
+            logger.warning(f'Failed to load routing data: {e}')
+
+    def _save_routing_data(self):
+        """Save routing data to storage"""
+        try:
+            data = {'performance_metrics': {model_id: list(metrics)[-500:] for (model_id, metrics) in self.performance_metrics.items()}, 'routing_weights': dict(self.routing_weights), 'success_patterns': dict(self.success_patterns), 'last_updated': time.time()}
+            with open(self.storage_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f'Failed to save routing data: {e}')
+
+    def analyze_context(self, user_input: str, conversation_history: List[Dict[str, Any]]=None, user_preferences: Dict[str, Any]=None, session_metadata: Dict[str, Any]=None) -> RoutingContext:
+        """Analyze context to extract routing information"""
+        context = RoutingContext(user_input=user_input, conversation_history=conversation_history or [], user_preferences=user_preferences or {}, session_metadata=session_metadata or {}, time_of_day=datetime.now().strftime('%H:%M'), language='en')
+        context.complexity_score = self._calculate_complexity(user_input)
+        context.domain = self._detect_domain(user_input)
+        context.urgency = self._detect_urgency(user_input)
+        if conversation_history:
+            context.previous_interactions = [msg.get('content', '')[:100] for msg in conversation_history[-5:]]
+        return context
+
+    def _calculate_complexity(self, text: str) -> float:
+        """Calculate complexity score of input text"""
+        complexity = 0.0
+        length_factor = min(len(text) / 1000, 1.0)
+        complexity += length_factor * 0.3
+        technical_keywords = ['algorithm', 'function', 'class', 'method', 'variable', 'database', 'api', 'endpoint', 'authentication', 'encryption', 'optimization', 'debug', 'compile', 'deploy', 'repository', 'framework', 'library']
+        tech_count = sum((1 for keyword in technical_keywords if keyword.lower() in text.lower()))
+        complexity += min(tech_count / 10, 1.0) * 0.4
+        question_words = ['how', 'why', 'what', 'explain', 'analyze', 'compare', 'implement']
+        question_count = sum((1 for word in question_words if word.lower() in text.lower()))
+        complexity += min(question_count / 5, 1.0) * 0.3
+        return min(complexity, 1.0)
+
+    def _detect_domain(self, text: str) -> str:
+        """Detect the domain of the input"""
+        text_lower = text.lower()
+        domains = {'coding': ['code', 'programming', 'function', 'class', 'debug', 'algorithm', 'python', 'javascript'], 'data_analysis': ['data', 'analyze', 'dataset', 'statistics', 'visualization', 'pandas', 'numpy'], 'web_development': ['website', 'html', 'css', 'javascript', 'react', 'frontend', 'backend'], 'machine_learning': ['machine learning', 'ml', 'model', 'training', 'neural', 'deep learning'], 'general': []}
+        domain_scores = {}
+        for (domain, keywords) in domains.items():
+            score = sum((1 for keyword in keywords if keyword in text_lower))
+            domain_scores[domain] = score
+        return max(domain_scores, key=domain_scores.get)
+
+    def _detect_urgency(self, text: str) -> str:
+        """Detect urgency level from input"""
+        text_lower = text.lower()
+        urgent_keywords = ['urgent', 'asap', 'immediately', 'emergency', 'critical', 'quickly']
+        normal_keywords = ['help', 'please', 'can you', 'would you']
+        if any((keyword in text_lower for keyword in urgent_keywords)):
+            return 'high'
+        elif any((keyword in text_lower for keyword in normal_keywords)):
+            return 'normal'
+        else:
+            return 'low'
+
+    def route_request(self, context: RoutingContext) -> RoutingDecision:
+        """Route request to optimal model and skills"""
+        context_hash = self._generate_context_hash(context)
+        required_skills = self._identify_required_skills(context)
+        model_scores = self._score_models(context, required_skills)
+        if not model_scores:
+            selected_model = 'opencode/big-pickle'
+            confidence = 0.5
+        else:
+            selected_model = max(model_scores, key=model_scores.get)
+            confidence = model_scores[selected_model]
+        alternatives = []
+        for (model_id, score) in sorted(model_scores.items(), key=lambda x: x[1], reverse=True)[1:]:
+            if len(alternatives) >= self.routing_config['max_alternatives']:
+                break
+            alternatives.append({'model': model_id, 'confidence': score, 'reasoning': self._generate_model_reasoning(model_id, context, required_skills)})
+        reasoning = self._generate_model_reasoning(selected_model, context, required_skills)
+        estimated_time = self._estimate_response_time(selected_model, required_skills, context)
+        estimated_cost = self._estimate_cost(selected_model, required_skills)
+        decision = RoutingDecision(selected_model=selected_model, selected_skills=required_skills, confidence_score=confidence, reasoning=reasoning, alternatives=alternatives, estimated_time=estimated_time, estimated_cost=estimated_cost, routing_metadata={'context_hash': context_hash, 'model_scores': model_scores, 'routing_timestamp': time.time()})
+        self._record_routing_decision(decision, context)
+        return decision
+
+    @lru_cache(maxsize=128)
+    def _identify_required_skills(self, context: RoutingContext) -> List[str]:
+        """Identify required skills based on context"""
+        required_skills = []
+        text_lower = context.user_input.lower()
+        skill_patterns = {'code_generation': ['write code', 'create function', 'implement', 'develop', 'program', 'code', 'function', 'class', 'method', 'algorithm'], 'text_analysis': ['analyze', 'summarize', 'extract', 'interpret', 'review text', 'analyze text', 'summarize document'], 'data_inspection': ['inspect data', 'analyze data', 'examine file', 'check data', 'data structure', 'file analysis', 'dataset'], 'web_search': ['search', 'find information', 'look up', 'research', 'web search', 'find online', 'search the web']}
+        for (skill, patterns) in skill_patterns.items():
+            if any((pattern in text_lower for pattern in patterns)):
+                required_skills.append(skill)
+        if context.domain == 'coding' and 'code_generation' not in required_skills:
+            required_skills.append('code_generation')
+        elif context.domain == 'data_analysis' and 'data_inspection' not in required_skills:
+            required_skills.append('data_inspection')
+        return required_skills
+
+    def _score_models(self, context: RoutingContext, required_skills: List[str]) -> Dict[str, float]:
+        """Score models for the given context"""
+        scores = {}
+        for (model_id, model) in self.models.items():
+            score = 0.0
+            if context.domain in model.specialties:
+                score += 0.3
+            elif context.domain in model.strengths:
+                score += 0.2
+            skill_score = 0.0
+            for skill in required_skills:
+                if skill in self.skills:
+                    skill_cap = self.skills[skill]
+                    if model_id in skill_cap.optimal_models:
+                        skill_score += 0.2
+                    else:
+                        skill_score += 0.1
+            score += min(skill_score, 0.4)
+            speed_score = max(0, 1 - model.average_response_time / 5.0)
+            score += speed_score * self.routing_config['speed_sensitivity']
+            score += model.reliability_score * self.routing_config['quality_sensitivity']
+            if model.cost_per_token == 0:
+                score += self.routing_config['cost_sensitivity']
+            else:
+                cost_penalty = min(model.cost_per_token * 1000, 1.0)
+                score -= cost_penalty * self.routing_config['cost_sensitivity']
+            if model_id in self.routing_weights:
+                score += self.routing_weights[model_id] * 0.2
+            context_hash = self._generate_context_hash(context)
+            if context_hash in self.context_patterns:
+                pattern_score = self._calculate_pattern_score(model_id, context_hash)
+                score += pattern_score * 0.1
+            scores[model_id] = max(0, min(1, score))
+        return scores
+
+    def _generate_context_hash(self, context: RoutingContext) -> str:
+        """Generate hash for context pattern recognition"""
+        context_str = f'{context.domain}_{context.complexity_score:.2f}_{context.urgency}_{len(context.user_input)}'
+        required_skills = self._identify_required_skills(context)
+        context_str += f"_{'-'.join(sorted(required_skills))}"
+        return hashlib.md5(context_str.encode()).hexdigest()[:8]
+
+    def _calculate_pattern_score(self, model_id: str, context_hash: str) -> float:
+        """Calculate pattern-based score for model"""
+        if context_hash not in self.context_patterns:
+            return 0.0
+        patterns = self.context_patterns[context_hash]
+        model_patterns = [p for p in patterns if p.selected_model == model_id]
+        if not model_patterns:
+            return 0.0
+        success_count = sum((1 for p in model_patterns if p.success))
+        total_count = len(model_patterns)
+        if total_count == 0:
+            return 0.0
+        success_rate = success_count / total_count
+        recency_weight = 0.0
+        for pattern in model_patterns:
+            age = time.time() - pattern.timestamp
+            recency_factor = max(0, 1 - age / (7 * 24 * 3600))
+            recency_weight += recency_factor * (1 if pattern.success else 0)
+        if total_count > 0:
+            recency_weight /= total_count
+        return success_rate * 0.7 + recency_weight * 0.3
+
+    def _generate_model_reasoning(self, model_id: str, context: RoutingContext, required_skills: List[str]) -> List[str]:
+        """Generate reasoning for model selection"""
+        reasoning = []
+        model = self.models[model_id]
+        if context.domain in model.specialties:
+            reasoning.append(f'Specializes in {context.domain}')
+        elif context.domain in model.strengths:
+            reasoning.append(f'Strong in {context.domain}')
+        compatible_skills = []
+        for skill in required_skills:
+            if skill in self.skills:
+                skill_cap = self.skills[skill]
+                if model_id in skill_cap.optimal_models:
+                    compatible_skills.append(skill)
+        if compatible_skills:
+            reasoning.append(f"Optimal for skills: {', '.join(compatible_skills)}")
+        if model.average_response_time < 2.0:
+            reasoning.append('Fast response time')
+        if model.reliability_score > 0.85:
+            reasoning.append('High reliability')
+        if model.cost_per_token == 0:
+            reasoning.append('Free to use')
+        if context.urgency == 'high' and model.average_response_time < 2.0:
+            reasoning.append('Suitable for urgent requests')
+        if context.complexity_score > 0.7 and model.max_tokens > 4000:
+            reasoning.append('Handles complex requests well')
+        return reasoning
+
+    def _estimate_response_time(self, model_id: str, required_skills: List[str], context: RoutingContext) -> float:
+        """Estimate response time for routing decision"""
+        model = self.models[model_id]
+        base_time = model.average_response_time
+        skill_time = 0.0
+        for skill in required_skills:
+            if skill in self.skills:
+                skill_cap = self.skills[skill]
+                skill_time += skill_cap.execution_time_avg
+        complexity_factor = 1 + context.complexity_score
+        urgency_factor = 0.8 if context.urgency == 'high' else 1.0
+        total_time = (base_time + skill_time) * complexity_factor * urgency_factor
+        return total_time
+
+    def _estimate_cost(self, model_id: str, required_skills: List[str]) -> float:
+        """Estimate cost for routing decision"""
+        model = self.models[model_id]
+        estimated_tokens = min(len(context.user_input.split()) * 2, model.max_tokens)
+        model_cost = estimated_tokens * model.cost_per_token
+        skill_cost = 0.0
+        for skill in required_skills:
+            if skill in self.skills:
+                pass
+        return model_cost + skill_cost
+
+    def _record_routing_decision(self, decision: RoutingDecision, context: RoutingContext):
+        """Record routing decision for learning"""
+        performance = RoutingPerformance(decision_id=str(hash(str(decision.routing_metadata))), timestamp=time.time(), context_hash=decision.routing_metadata['context_hash'], selected_model=decision.selected_model, selected_skills=decision.selected_skills, actual_response_time=0.0, actual_cost=0.0, success=False, user_satisfaction=None)
+        self.routing_history.append(performance)
+
+    def record_execution_result(self, decision_id: str, response_time: float, cost: float, success: bool, user_satisfaction: float=None, error: str=None):
+        """Record execution result for learning"""
+        performance = None
+        for record in reversed(self.routing_history):
+            if record.decision_id == decision_id:
+                performance = record
+                break
+        if not performance:
+            logger.warning(f'Routing decision not found: {decision_id}')
+            return
+        performance.actual_response_time = response_time
+        performance.actual_cost = cost
+        performance.success = success
+        performance.user_satisfaction = user_satisfaction
+        performance.error = error
+        self._update_model_performance(performance)
+        self._update_routing_weights(performance)
+        self._update_context_patterns(performance)
+        self._save_routing_data()
+
+    def _update_model_performance(self, performance: RoutingPerformance):
+        """Update model performance metrics"""
+        model_id = performance.selected_model
+        self.performance_metrics[model_id].append({'timestamp': performance.timestamp, 'response_time': performance.actual_response_time, 'cost': performance.actual_cost, 'success': performance.success, 'user_satisfaction': performance.user_satisfaction})
+        if len(self.performance_metrics[model_id]) >= 10:
+            recent_metrics = list(self.performance_metrics[model_id])[-50:]
+            avg_response_time = statistics.mean([m['response_time'] for m in recent_metrics])
+            success_rate = sum((1 for m in recent_metrics if m['success'])) / len(recent_metrics)
+            if model_id in self.models:
+                self.models[model_id].average_response_time = avg_response_time
+                self.models[model_id].reliability_score = success_rate
+                self.models[model_id].last_updated = time.time()
+
+    def _update_routing_weights(self, performance: RoutingPerformance):
+        """Update routing weights based on performance"""
+        model_id = performance.selected_model
+        time_score = max(0, 1 - performance.actual_response_time / 5.0)
+        success_score = 1.0 if performance.success else 0.0
+        satisfaction_score = performance.user_satisfaction or 0.5
+        performance_score = time_score * 0.4 + success_score * 0.4 + satisfaction_score * 0.2
+        current_weight = self.routing_weights.get(model_id, 0.0)
+        new_weight = current_weight + self.routing_config['learning_rate'] * (performance_score - 0.5)
+        self.routing_weights[model_id] = max(-1.0, min(1.0, new_weight))
+
+    def _update_context_patterns(self, performance: RoutingPerformance):
+        """Update context patterns for learning"""
+        context_hash = performance.context_hash
+        if context_hash not in self.context_patterns:
+            self.context_patterns[context_hash] = []
+        self.context_patterns[context_hash].append(performance)
+        self.context_patterns[context_hash] = [p for p in self.context_patterns[context_hash] if time.time() - p.timestamp < 30 * 24 * 3600]
+        if performance.success:
+            pattern_key = f'{context_hash}_{performance.selected_model}'
+            self.success_patterns[pattern_key] = self.success_patterns.get(pattern_key, 0.0) + self.routing_config['learning_rate']
+
+    def get_routing_analytics(self) -> Dict[str, Any]:
+        """Get routing analytics and insights"""
+        total_routings = len(self.routing_history)
+        if total_routings == 0:
+            return {'status': 'no_data', 'message': 'No routing data available'}
+        model_stats = {}
+        for model_id in self.models:
+            model_routings = [r for r in self.routing_history if r.selected_model == model_id]
+            if model_routings:
+                success_rate = sum((1 for r in model_routings if r.success)) / len(model_routings)
+                avg_response_time = statistics.mean([r.actual_response_time for r in model_routings])
+                avg_cost = statistics.mean([r.actual_cost for r in model_routings])
+                model_stats[model_id] = {'total_routings': len(model_routings), 'success_rate': success_rate, 'avg_response_time': avg_response_time, 'avg_cost': avg_cost, 'routing_weight': self.routing_weights.get(model_id, 0.0)}
+        pattern_stats = {}
+        for (context_hash, patterns) in self.context_patterns.items():
+            if len(patterns) >= 5:
+                model_performance = {}
+                for pattern in patterns:
+                    model_id = pattern.selected_model
+                    if model_id not in model_performance:
+                        model_performance[model_id] = {'success': 0, 'total': 0}
+                    model_performance[model_id]['total'] += 1
+                    if pattern.success:
+                        model_performance[model_id]['success'] += 1
+                best_model = None
+                best_score = 0.0
+                for (model_id, stats) in model_performance.items():
+                    if stats['total'] > 0:
+                        score = stats['success'] / stats['total']
+                        if score > best_score:
+                            best_score = score
+                            best_model = model_id
+                if best_model:
+                    pattern_stats[context_hash] = {'best_model': best_model, 'success_rate': best_score, 'total_patterns': len(patterns)}
+        return {'total_routings': total_routings, 'model_performance': model_stats, 'pattern_analysis': pattern_stats, 'routing_weights': dict(self.routing_weights), 'learning_config': self.routing_config, 'last_updated': time.time()}
+
+    def optimize_routing(self) -> Dict[str, Any]:
+        """Optimize routing based on learned patterns"""
+        optimization_results = {'updated_weights': {}, 'pattern_improvements': {}, 'recommendations': []}
+        recent_routings = [r for r in self.routing_history if time.time() - r.timestamp < 7 * 24 * 3600]
+        if len(recent_routings) < 20:
+            optimization_results['recommendations'].append('Insufficient data for optimization. Need more routing history.')
+            return optimization_results
+        for model_id in self.models:
+            model_routings = [r for r in recent_routings if r.selected_model == model_id]
+            if len(model_routings) >= 10:
+                success_rate = sum((1 for r in model_routings if r.success)) / len(model_routings)
+                if success_rate < 0.7:
+                    current_weight = self.routing_weights.get(model_id, 0.0)
+                    new_weight = current_weight - 0.1
+                    self.routing_weights[model_id] = max(-1.0, new_weight)
+                    optimization_results['updated_weights'][model_id] = {'old_weight': current_weight, 'new_weight': new_weight, 'reason': f'Low success rate: {success_rate:.2%}'}
+        for (model_id, stats) in self.get_routing_analytics()['model_performance'].items():
+            if stats['success_rate'] > 0.9 and stats['routing_weight'] < 0.5:
+                optimization_results['recommendations'].append(f"Consider increasing weight for {model_id} - high success rate ({stats['success_rate']:.2%})")
+        self._save_routing_data()
+        return optimization_results
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    router = SmartRouter()
+    test_inputs = ['Write a Python function to sort a list of numbers', 'Analyze this text and provide a summary', 'Help me debug my JavaScript code', 'Search for information about machine learning']
+    for test_input in test_inputs:
+        print(f'\nInput: {test_input}')
+        context = router.analyze_context(test_input)
+        decision = router.route_request(context)
+        print(f'Selected Model: {decision.selected_model}')
+        print(f'Skills: {decision.selected_skills}')
+        print(f'Confidence: {decision.confidence_score:.2f}')
+        print(f"Reasoning: {', '.join(decision.reasoning)}")
+        print(f'Estimated Time: {decision.estimated_time:.2f}s')
+        router.record_execution_result(decision_id=str(hash(str(decision.routing_metadata))), response_time=decision.estimated_time, cost=decision.estimated_cost, success=True, user_satisfaction=0.8)
+    analytics = router.get_routing_analytics()
+    print(f'\nRouting Analytics:')
+    print(f"Total routings: {analytics['total_routings']}")
+    print(f"Model performance: {analytics['model_performance']}")
+    optimization = router.optimize_routing()
+    print(f'\nOptimization Results: {optimization}')

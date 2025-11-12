@@ -1,0 +1,104 @@
+{
+  "workflow_id": "ml_wf_1762966694",
+  "config": {
+    "project_name": "ml_project",
+    "problem_type": "classification",
+    "data_source": "",
+    "target_variable": null,
+    "evaluation_metrics": [
+      "accuracy"
+    ],
+    "deployment_target": "local",
+    "optimization_priority": "accuracy"
+  },
+  "steps": [
+    {
+      "step_id": "data_analysis",
+      "name": "Data Analysis & Preprocessing",
+      "description": "Analyze data quality, handle missing values, perform initial EDA",
+      "dependencies": [],
+      "estimated_duration": 5.0,
+      "required_skills": [
+        "data_inspector",
+        "analytics_analyzer"
+      ],
+      "output_artifacts": [
+        "cleaned_data.csv",
+        "data_analysis_report.json"
+      ]
+    },
+    {
+      "step_id": "feature_engineering",
+      "name": "Feature Engineering & Selection",
+      "description": "Create new features, select relevant features, encode categorical variables",
+      "dependencies": [
+        "data_analysis"
+      ],
+      "estimated_duration": 8.0,
+      "required_skills": [
+        "code_generation",
+        "analytics_analyzer"
+      ],
+      "output_artifacts": [
+        "feature_matrix.csv",
+        "feature_importance.json"
+      ]
+    },
+    {
+      "step_id": "model_design",
+      "name": "Model Selection & Architecture Design",
+      "description": "Select appropriate models, design architecture, prepare training pipeline",
+      "dependencies": [
+        "feature_engineering"
+      ],
+      "estimated_duration": 6.0,
+      "required_skills": [
+        "ml_training",
+        "code_generation"
+      ],
+      "output_artifacts": [
+        "model_config.json",
+        "training_pipeline.py"
+      ]
+    },
+    {
+      "step_id": "training_optimization",
+      "name": "Training & Hyperparameter Optimization",
+      "description": "Train models, optimize hyperparameters, perform cross-validation",
+      "dependencies": [
+        "model_design"
+      ],
+      "estimated_duration": 15.0,
+      "required_skills": [
+        "ml_training",
+        "task_orchestrator"
+      ],
+      "output_artifacts": [
+        "trained_model.pkl",
+        "hyperparameters.json",
+        "cv_results.json"
+      ]
+    },
+    {
+      "step_id": "evaluation_deployment",
+      "name": "Evaluation & Deployment Preparation",
+      "description": "Evaluate model performance, prepare deployment artifacts, generate documentation",
+      "dependencies": [
+        "training_optimization"
+      ],
+      "estimated_duration": 7.0,
+      "required_skills": [
+        "analytics_analyzer",
+        "code_generation"
+      ],
+      "output_artifacts": [
+        "evaluation_report.json",
+        "deployment_package.zip",
+        "model_documentation.md"
+      ]
+    }
+  ],
+  "estimated_total_duration": 41.0,
+  "created_at": "2025-11-13T00:58:14.529316",
+  "status": "ready"
+}

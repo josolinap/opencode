@@ -1,0 +1,301 @@
+from functools import lru_cache
+'\nrealtime_analytics.py - Real-time Performance Monitoring and Analytics System\n\nProvides comprehensive real-time monitoring, analytics, and alerting for Neo-Clone\nwith live dashboards, performance metrics, and automated insights.\n'
+import time
+import threading
+import logging
+import json
+import psutil
+import queue
+from typing import Dict, List, Any, Optional, Callable
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from pathlib import Path
+import statistics
+logger = logging.getLogger(__name__)
+
+@dataclass
+class RealTimeMetric:
+    """Real-time performance metric"""
+    timestamp: float
+    metric_name: str
+    value: float
+    tags: Dict[str, str]
+    alert_threshold: Optional[float] = None
+
+@dataclass
+class PerformanceAlert:
+    """Performance alert definition"""
+    alert_id: str
+    severity: str
+    metric_name: str
+    current_value: float
+    threshold: float
+    message: str
+    timestamp: float
+    resolved: bool = False
+
+@dataclass
+class SystemSnapshot:
+    """Snapshot of system state at a point in time"""
+    timestamp: float
+    cpu_percent: float
+    memory_percent: float
+    disk_usage: float
+    active_models: int
+    active_skills: int
+    response_time_avg: float
+    error_rate: float
+    throughput: float
+
+class RealTimeAnalytics:
+    """Real-time analytics and monitoring system"""
+
+    def __init__(self, storage_path: str='realtime_analytics.json'):
+        self.storage_path = Path(storage_path)
+        self.metrics_queue = queue.Queue()
+        self.alerts: List[PerformanceAlert] = []
+        self.metrics_history: Dict[str, deque] = defaultdict(lambda : deque(maxlen=1000))
+        self.system_snapshots: deque = deque(maxlen=1440)
+        self.is_monitoring = False
+        self.monitor_thread: Optional[threading.Thread] = None
+        self.alert_callbacks: List[Callable[[PerformanceAlert], None]] = []
+        self.thresholds = {'response_time': 2.0, 'error_rate': 0.05, 'cpu_usage': 80.0, 'memory_usage': 85.0, 'disk_usage': 90.0, 'model_switch_time': 0.01}
+        self.current_metrics = {'response_times': deque(maxlen=100), 'error_count': 0, 'total_requests': 0, 'model_switches': 0, 'skill_executions': defaultdict(int), 'active_conversations': 0, 'system_health': 1.0}
+        self._load_historical_data()
+
+    def _load_historical_data(self):
+        """Load historical analytics data"""
+        try:
+            if self.storage_path.exists():
+                with open(self.storage_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.alerts = [PerformanceAlert(**alert) for alert in data.get('alerts', [])]
+                historical_metrics = data.get('metrics_history', {})
+                for (metric_name, values) in historical_metrics.items():
+                    self.metrics_history[metric_name].extend(values)
+                logger.info(f'Loaded {len(self.alerts)} historical alerts')
+                logger.info(f'Loaded metrics for {len(historical_metrics)} metrics')
+        except Exception as e:
+            logger.warning(f'Failed to load historical analytics: {e}')
+
+    def _save_analytics(self):
+        """Save analytics data to storage"""
+        try:
+            data = {'alerts': [asdict(alert) for alert in self.alerts[-100:]], 'metrics_history': {name: list(values)[-500:] for (name, values) in self.metrics_history.items()}, 'current_metrics': {'response_times': list(self.current_metrics['response_times'])[-100:], 'error_count': self.current_metrics['error_count'], 'total_requests': self.current_metrics['total_requests'], 'model_switches': self.current_metrics['model_switches'], 'skill_executions': dict(self.current_metrics['skill_executions']), 'active_conversations': self.current_metrics['active_conversations'], 'system_health': self.current_metrics['system_health']}, 'last_updated': time.time()}
+            with open(self.storage_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f'Failed to save analytics: {e}')
+
+    def start_monitoring(self):
+        """Start real-time monitoring"""
+        if self.is_monitoring:
+            logger.warning('Monitoring already started')
+            return
+        self.is_monitoring = True
+        self.monitor_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.monitor_thread.start()
+        logger.info('Real-time analytics monitoring started')
+
+    def stop_monitoring(self):
+        """Stop real-time monitoring"""
+        self.is_monitoring = False
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=5)
+        logger.info('Real-time analytics monitoring stopped')
+
+    @lru_cache(maxsize=128)
+    def _monitoring_loop(self):
+        """Main monitoring loop"""
+        last_system_snapshot = time.time()
+        while self.is_monitoring:
+            try:
+                current_time = time.time()
+                while not self.metrics_queue.empty():
+                    try:
+                        metric = self.metrics_queue.get_nowait()
+                        self._process_metric(metric)
+                    except queue.Empty:
+                        break
+                if current_time - last_system_snapshot >= 60:
+                    self._take_system_snapshot()
+                    last_system_snapshot = current_time
+                self._check_alerts()
+                if int(current_time) % 300 == 0:
+                    self._save_analytics()
+                time.sleep(1)
+            except Exception as e:
+                logger.error(f'Error in monitoring loop: {e}')
+                time.sleep(5)
+
+    def record_metric(self, metric_name: str, value: float, tags: Dict[str, str]=None):
+        """Record a real-time metric"""
+        metric = RealTimeMetric(timestamp=time.time(), metric_name=metric_name, value=value, tags=tags or {}, alert_threshold=self.thresholds.get(metric_name))
+        try:
+            self.metrics_queue.put_nowait(metric)
+        except queue.Full:
+            logger.warning(f'Metrics queue full, dropping metric: {metric_name}')
+
+    def _process_metric(self, metric: RealTimeMetric):
+        """Process an incoming metric"""
+        self.metrics_history[metric.metric_name].append(metric.value)
+        if metric.metric_name == 'response_time':
+            self.current_metrics['response_times'].append(metric.value)
+        elif metric.metric_name == 'error':
+            self.current_metrics['error_count'] += 1
+        elif metric.metric_name == 'request':
+            self.current_metrics['total_requests'] += 1
+        elif metric.metric_name == 'model_switch':
+            self.current_metrics['model_switches'] += 1
+        elif metric.metric_name == 'skill_execution':
+            skill_name = metric.tags.get('skill_name', 'unknown')
+            self.current_metrics['skill_executions'][skill_name] += 1
+        elif metric.metric_name == 'conversation_start':
+            self.current_metrics['active_conversations'] += 1
+        elif metric.metric_name == 'conversation_end':
+            self.current_metrics['active_conversations'] = max(0, self.current_metrics['active_conversations'] - 1)
+        self._update_system_health()
+
+    def _take_system_snapshot(self):
+        """Take a snapshot of current system state"""
+        try:
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            recent_response_times = list(self.current_metrics['response_times'])[-10:]
+            avg_response_time = statistics.mean(recent_response_times) if recent_response_times else 0
+            error_rate = self.current_metrics['error_count'] / max(1, self.current_metrics['total_requests'])
+            throughput = self.current_metrics['total_requests'] / max(1, time.time() - (self.system_snapshots[0].timestamp if self.system_snapshots else time.time()))
+            snapshot = SystemSnapshot(timestamp=time.time(), cpu_percent=cpu_percent, memory_percent=memory.percent, disk_usage=disk.percent, active_models=len(self._get_active_models()), active_skills=len(self._get_active_skills()), response_time_avg=avg_response_time, error_rate=error_rate, throughput=throughput)
+            self.system_snapshots.append(snapshot)
+        except Exception as e:
+            logger.error(f'Failed to take system snapshot: {e}')
+
+    def _get_active_models(self) -> List[str]:
+        """Get list of currently active models"""
+        return ['opencode/big-pickle', 'opencode/grok-code']
+
+    def _get_active_skills(self) -> List[str]:
+        """Get list of currently active skills"""
+        recent_skills = [skill for (skill, count) in self.current_metrics['skill_executions'].items() if count > 0]
+        return recent_skills
+
+    def _update_system_health(self):
+        """Update overall system health score"""
+        health_factors = []
+        if self.current_metrics['response_times']:
+            avg_response = statistics.mean(self.current_metrics['response_times'])
+            response_health = max(0, 1 - avg_response / self.thresholds['response_time'])
+            health_factors.append(response_health)
+        if self.current_metrics['total_requests'] > 0:
+            error_rate = self.current_metrics['error_count'] / self.current_metrics['total_requests']
+            error_health = max(0, 1 - error_rate / self.thresholds['error_rate'])
+            health_factors.append(error_health)
+        health_factors.append(0.9)
+        if health_factors:
+            self.current_metrics['system_health'] = statistics.mean(health_factors)
+        else:
+            self.current_metrics['system_health'] = 1.0
+
+    def _check_alerts(self):
+        """Check for performance alerts"""
+        current_time = time.time()
+        if self.current_metrics['response_times']:
+            avg_response = statistics.mean(self.current_metrics['response_times'][-10:])
+            if avg_response > self.thresholds['response_time']:
+                self._create_alert(severity='high', metric_name='response_time', current_value=avg_response, threshold=self.thresholds['response_time'], message=f"Average response time ({avg_response:.2f}s) exceeds threshold ({self.thresholds['response_time']}s)")
+        if self.current_metrics['total_requests'] > 0:
+            error_rate = self.current_metrics['error_count'] / self.current_metrics['total_requests']
+            if error_rate > self.thresholds['error_rate']:
+                self._create_alert(severity='critical', metric_name='error_rate', current_value=error_rate, threshold=self.thresholds['error_rate'], message=f"Error rate ({error_rate:.2%}) exceeds threshold ({self.thresholds['error_rate']:.1%})")
+        self._cleanup_old_alerts(current_time)
+
+    def _create_alert(self, severity: str, metric_name: str, current_value: float, threshold: float, message: str):
+        """Create a new performance alert"""
+        alert_id = f'{metric_name}_{int(time.time())}'
+        existing_alert = next((a for a in self.alerts if a.metric_name == metric_name and (not a.resolved) and (a.severity == severity)), None)
+        if existing_alert:
+            return
+        alert = PerformanceAlert(alert_id=alert_id, severity=severity, metric_name=metric_name, current_value=current_value, threshold=threshold, message=message, timestamp=time.time())
+        self.alerts.append(alert)
+        logger.warning(f'ALERT: {message}')
+        for callback in self.alert_callbacks:
+            try:
+                callback(alert)
+            except Exception as e:
+                logger.error(f'Alert callback failed: {e}')
+
+    def _cleanup_old_alerts(self, current_time: float):
+        """Clean up old resolved alerts"""
+        cutoff_time = current_time - 24 * 3600
+        self.alerts = [alert for alert in self.alerts if not alert.resolved or alert.timestamp > cutoff_time]
+
+    def get_real_time_dashboard(self) -> Dict[str, Any]:
+        """Get real-time dashboard data"""
+        recent_snapshots = list(self.system_snapshots)[-60:]
+        if not recent_snapshots:
+            return {'status': 'no_data', 'message': 'No data available yet'}
+        latest_snapshot = recent_snapshots[-1]
+        if len(recent_snapshots) >= 2:
+            cpu_trend = latest_snapshot.cpu_percent - recent_snapshots[0].cpu_percent
+            memory_trend = latest_snapshot.memory_percent - recent_snapshots[0].memory_percent
+            response_trend = latest_snapshot.response_time_avg - recent_snapshots[0].response_time_avg
+        else:
+            cpu_trend = memory_trend = response_trend = 0
+        active_alerts = [a for a in self.alerts if not a.resolved]
+        return {'timestamp': latest_snapshot.timestamp, 'system_health': self.current_metrics['system_health'], 'performance_metrics': {'response_time_avg': latest_snapshot.response_time_avg, 'response_time_trend': response_trend, 'error_rate': latest_snapshot.error_rate, 'throughput': latest_snapshot.throughput, 'active_models': latest_snapshot.active_models, 'active_skills': latest_snapshot.active_skills}, 'system_resources': {'cpu_percent': latest_snapshot.cpu_percent, 'cpu_trend': cpu_trend, 'memory_percent': latest_snapshot.memory_percent, 'memory_trend': memory_trend, 'disk_usage': latest_snapshot.disk_usage}, 'alerts': {'active_count': len(active_alerts), 'critical_count': len([a for a in active_alerts if a.severity == 'critical']), 'high_count': len([a for a in active_alerts if a.severity == 'high']), 'recent_alerts': [asdict(a) for a in active_alerts[-5:]]}, 'skill_usage': dict(self.current_metrics['skill_executions']), 'conversation_stats': {'active_conversations': self.current_metrics['active_conversations'], 'total_requests': self.current_metrics['total_requests'], 'total_errors': self.current_metrics['error_count']}}
+
+    def get_performance_report(self, time_range: str='1h') -> Dict[str, Any]:
+        """Generate performance report for time range"""
+        if time_range.endswith('h'):
+            hours = int(time_range[:-1])
+            cutoff_time = time.time() - hours * 3600
+        elif time_range.endswith('d'):
+            days = int(time_range[:-1])
+            cutoff_time = time.time() - days * 24 * 3600
+        else:
+            cutoff_time = time.time() - 3600
+        relevant_snapshots = [s for s in self.system_snapshots if s.timestamp >= cutoff_time]
+        if not relevant_snapshots:
+            return {'status': 'no_data', 'message': f'No data for time range: {time_range}'}
+        cpu_values = [s.cpu_percent for s in relevant_snapshots]
+        memory_values = [s.memory_percent for s in relevant_snapshots]
+        response_times = [s.response_time_avg for s in relevant_snapshots if s.response_time_avg > 0]
+        return {'time_range': time_range, 'period': {'start': min((s.timestamp for s in relevant_snapshots)), 'end': max((s.timestamp for s in relevant_snapshots)), 'duration_hours': hours if time_range.endswith('h') else days * 24}, 'performance_summary': {'avg_response_time': statistics.mean(response_times) if response_times else 0, 'max_response_time': max(response_times) if response_times else 0, 'min_response_time': min(response_times) if response_times else 0, 'avg_error_rate': statistics.mean([s.error_rate for s in relevant_snapshots]), 'max_error_rate': max([s.error_rate for s in relevant_snapshots]), 'total_requests': sum((s.throughput for s in relevant_snapshots)), 'avg_throughput': statistics.mean([s.throughput for s in relevant_snapshots])}, 'resource_summary': {'avg_cpu': statistics.mean(cpu_values), 'max_cpu': max(cpu_values), 'avg_memory': statistics.mean(memory_values), 'max_memory': max(memory_values)}, 'alerts_summary': {'total_alerts': len([a for a in self.alerts if a.timestamp >= cutoff_time]), 'critical_alerts': len([a for a in self.alerts if a.timestamp >= cutoff_time and a.severity == 'critical']), 'high_alerts': len([a for a in self.alerts if a.timestamp >= cutoff_time and a.severity == 'high'])}}
+
+    def add_alert_callback(self, callback: Callable[[PerformanceAlert], None]):
+        """Add callback for alert notifications"""
+        self.alert_callbacks.append(callback)
+
+    def resolve_alert(self, alert_id: str):
+        """Resolve an alert"""
+        for alert in self.alerts:
+            if alert.alert_id == alert_id:
+                alert.resolved = True
+                logger.info(f'Resolved alert: {alert_id}')
+                return
+        logger.warning(f'Alert not found: {alert_id}')
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    analytics = RealTimeAnalytics()
+
+    def alert_handler(alert: PerformanceAlert):
+        print(f'ALERT: {alert.severity.upper()} - {alert.message}')
+    analytics.add_alert_callback(alert_handler)
+    analytics.start_monitoring()
+    try:
+        for i in range(10):
+            analytics.record_metric('response_time', 0.5 + i * 0.1)
+            analytics.record_metric('request', 1)
+            if i % 5 == 0:
+                analytics.record_metric('error', 1)
+            time.sleep(1)
+        dashboard = analytics.get_real_time_dashboard()
+        print('Real-time Dashboard:')
+        print(json.dumps(dashboard, indent=2, default=str))
+        report = analytics.get_performance_report('1h')
+        print('\nPerformance Report:')
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        analytics.stop_monitoring()

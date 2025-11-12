@@ -1,0 +1,100 @@
+from functools import lru_cache
+'\nDiagnostic script to inspect why SkillRegistry discovered zero skills.\n- Ensures project parent is on sys.path\n- Imports skills package and each skill module\n- Prints module metadata, classes found, and subclass checks against skills.BaseSkill\n- Instantiates SkillRegistry and prints internals\n'
+import sys
+import traceback
+from pathlib import Path
+import importlib
+import inspect
+import logging
+ROOT = Path('/app/neo_tui_assistant_1544/neo-clone')
+PROJECT_PARENT = str(ROOT.parent)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
+logger = logging.getLogger('debug_skills')
+
+def ensure_sys_path():
+    if PROJECT_PARENT not in sys.path:
+        sys.path.insert(0, PROJECT_PARENT)
+        logger.info('Inserted project parent to sys.path: %s', PROJECT_PARENT)
+    else:
+        logger.info('Project parent already on sys.path')
+
+def try_import(pkg_name):
+    try:
+        mod = importlib.import_module(pkg_name)
+        logger.info('Imported package/module: %s (module=%s, package=%s)', pkg_name, getattr(mod, '__name__', None), getattr(mod, '__package__', None))
+        return mod
+    except Exception as e:
+        logger.error('Import failed for %s: %s', pkg_name, e)
+        traceback.print_exc()
+        return None
+
+def inspect_module(mod):
+    if mod is None:
+        logger.warning('inspect_module called with None')
+        return
+    logger.info('Module __name__: %s', getattr(mod, '__name__', None))
+    logger.info('Module __package__: %s', getattr(mod, '__package__', None))
+    logger.info('Module __spec__: %s', getattr(mod, '__spec__', None))
+    names = sorted([n for n in dir(mod) if not n.startswith('_')])
+    logger.info('Public attributes: %s', names)
+    classes = []
+    for name in names:
+        obj = getattr(mod, name)
+        if inspect.isclass(obj):
+            classes.append((name, obj))
+    if not classes:
+        logger.info('No classes found in module %s', mod.__name__)
+    else:
+        logger.info('Classes found in %s: %s', mod.__name__, [n for (n, _) in classes])
+    return classes
+
+@lru_cache(maxsize=128)
+def main():
+    ensure_sys_path()
+    skills_pkg = try_import('skills')
+    if skills_pkg is None:
+        logger.error('skills package failed to import; aborting diagnostics')
+        return
+    skill_files = ['ml_training', 'text_analysis', 'data_inspector', 'code_generation']
+    skill_modules = {}
+    for name in skill_files:
+        pkg_mod_name = f'skills.{name}'
+        mod = try_import(pkg_mod_name)
+        skill_modules[name] = mod
+        inspect_module(mod)
+    try:
+        BaseSkill = getattr(skills_pkg, 'BaseSkill')
+        logger.info('Found BaseSkill in skills package: %s', BaseSkill)
+    except Exception as e:
+        logger.error('BaseSkill not found in skills package: %s', e)
+        traceback.print_exc()
+        BaseSkill = None
+    for (name, mod) in skill_modules.items():
+        if mod is None:
+            logger.warning('Module %s is None, skipping subclass checks', name)
+            continue
+        classes = inspect_module(mod)
+        for (cname, cobj) in classes:
+            try:
+                is_sub = False
+                if BaseSkill is not None:
+                    is_sub = issubclass(cobj, BaseSkill)
+                logger.info('Class %s.%s issubclass(BaseSkill)? %s', mod.__name__, cname, is_sub)
+            except Exception as e:
+                logger.error('Error checking issubclass for %s.%s: %s', mod.__name__, cname, e)
+                traceback.print_exc()
+    try:
+        from skills import SkillRegistry
+        registry = SkillRegistry(skills_path=str(ROOT / 'skills'))
+        logger.info('SkillRegistry created. Discovered skills list(): %s', registry.list_skills())
+        for name in registry.list_skills():
+            try:
+                obj = registry.get(name)
+                logger.info("Registered skill '%s' -> instance %s (module=%s)", name, type(obj), getattr(obj, '__module__', None))
+            except Exception as e:
+                logger.error('Failed to get registered skill %s: %s', name, e)
+    except Exception as e:
+        logger.error('Failed to instantiate SkillRegistry: %s', e)
+        traceback.print_exc()
+if __name__ == '__main__':
+    main()

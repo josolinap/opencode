@@ -1,0 +1,254 @@
+from functools import lru_cache
+'\nautonomous_neo_clone_integration.py - Complete Drop-in Integration Package\n\nThis is the main integration module that brings together all autonomous features:\n- Self-optimizing brain with analytics\n- Enhanced TUI with real-time monitoring\n- Analytics reporting system\n- Opencode model integration\n- Complete skill ecosystem\n\nThis module can be used as a drop-in replacement for the entire Neo-Clone system\nin an Opencode project.\n'
+import logging
+import asyncio
+import time
+import json
+from typing import Dict, List, Optional, Any, Type
+from pathlib import Path
+from datetime import datetime
+from enhanced_brain_opencode import SelfOptimizingBrain
+from autonomous_tui_opencode import AutonomousNeoCloneTUI
+from analytics_reporting_system import AnalyticsReporter, get_analytics_reporter
+from config_opencode import Config, load_config
+from skills import SkillRegistry
+from llm_client_opencode import LLMClient
+from skills.analytics_skill import UsageAnalyzer, PerformanceMonitor
+from skills.autonomous_reasoning_skill import SkillRoutingOptimizer, CrossSkillDependencyAnalyzer, AutonomousWorkflowGenerator
+logger = logging.getLogger(__name__)
+
+class AutonomousNeoCloneSystem:
+    """
+    Complete autonomous Neo-Clone system with full Opencode integration.
+    
+    This class provides a unified interface to all autonomous features:
+    - Self-optimizing brain with analytics
+    - Enhanced TUI with real-time monitoring
+    - Comprehensive analytics reporting
+    - Opencode model selection integration
+    - Autonomous workflow generation
+    - Performance optimization
+    """
+
+    def __init__(self, config: Optional[Config]=None, enable_tui: bool=True):
+        """
+        Initialize the complete autonomous system
+        
+        Args:
+            config: Configuration object (loads from file if None)
+            enable_tui: Whether to enable the TUI interface
+        """
+        self.config = config or load_config()
+        self.brain = SelfOptimizingBrain(self.config)
+        self.analytics_reporter = get_analytics_reporter(self.brain)
+        self.tui = None
+        self.is_running = False
+        self.start_time = time.time()
+        if enable_tui:
+            self.tui = AutonomousNeoCloneTUI()
+            self.tui.brain = self.brain
+        self._initialize_autonomous_features()
+        logger.info('Autonomous Neo-Clone system initialized')
+
+    def _initialize_autonomous_features(self) -> None:
+        """Initialize all autonomous features"""
+        try:
+            skill_count = len(self.brain.skills.skills)
+            logger.info(f'Loaded {skill_count} skills')
+            analytics_status = self.analytics_reporter.get_real_time_status()
+            logger.info('Analytics system initialized')
+            autonomous_features = [self.brain.usage_analyzer, self.brain.performance_monitor, self.brain.routing_optimizer, self.brain.dependency_analyzer, self.brain.workflow_generator]
+            for feature in autonomous_features:
+                if feature is not None:
+                    logger.debug(f'Autonomous feature active: {feature.__class__.__name__}')
+            logger.info('All autonomous features initialized successfully')
+        except Exception as e:
+            logger.error(f'Error initializing autonomous features: {e}')
+
+    def process(self, user_input: str) -> Dict[str, Any]:
+        """
+        Main processing method with full autonomous capabilities
+        
+        Args:
+            user_input: User input string
+            
+        Returns:
+            Dict containing response, analytics, and optimization data
+        """
+        try:
+            response_data = self.brain.process(user_input)
+            response_data['system_info'] = {'system_uptime': time.time() - self.start_time, 'version': '1.0.0-autonomous', 'autonomous_features_active': self._count_active_autonomous_features(), 'integration_type': 'opencode_compatible'}
+            if response_data.get('performance_metrics', {}).get('session_stats', {}).get('message_count', 0) % 10 == 0:
+                response_data['analytics_summary'] = self._get_analytics_summary()
+            return response_data
+        except Exception as e:
+            logger.error(f'Error in autonomous processing: {e}')
+            return {'response': f'Error: {str(e)}', 'error': True, 'system_info': {'error_time': datetime.now().isoformat(), 'system_uptime': time.time() - self.start_time}}
+
+    def _count_active_autonomous_features(self) -> int:
+        """Count active autonomous features"""
+        count = 0
+        autonomous_features = ['usage_analyzer', 'performance_monitor', 'routing_optimizer', 'dependency_analyzer', 'workflow_generator']
+        for feature_name in autonomous_features:
+            if hasattr(self.brain, feature_name):
+                count += 1
+        return count
+
+    def _get_analytics_summary(self) -> Dict[str, Any]:
+        """Get summary of current analytics"""
+        try:
+            status = self.brain.get_status()
+            real_time = self.analytics_reporter.get_real_time_status()
+            return {'session_messages': status.get('conversation_stats', {}).get('message_count', 0), 'optimizations_applied': len(self.brain.optimization_history), 'skills_used': len([s for s in status.get('conversation_stats', {}).get('skills_used', {}).values() if s > 0]), 'system_health': 'excellent' if len(self.brain.optimization_history) > 2 else 'good', 'autonomous_features': self._count_active_autonomous_features()}
+        except Exception as e:
+            logger.error(f'Error getting analytics summary: {e}')
+            return {'error': str(e)}
+
+    def generate_analytics_report(self, format: str='json') -> str:
+        """
+        Generate comprehensive analytics report
+        
+        Args:
+            format: Output format ("json" or "markdown")
+            
+        Returns:
+            Filename of generated report
+        """
+        try:
+            if format.lower() == 'json':
+                return self.analytics_reporter.export_to_json()
+            elif format.lower() == 'markdown':
+                return self.analytics_reporter.export_to_markdown()
+            else:
+                raise ValueError(f'Unsupported format: {format}')
+        except Exception as e:
+            logger.error(f'Error generating analytics report: {e}')
+            return f'Error: {str(e)}'
+
+    def run_tui(self) -> None:
+        """Run the autonomous TUI interface"""
+        if not self.tui:
+            self.tui = AutonomousNeoCloneTUI()
+            self.tui.brain = self.brain
+        logger.info('Starting autonomous TUI')
+        self.tui.run()
+
+    def run_autonomous_optimization(self) -> Dict[str, Any]:
+        """Run autonomous optimization and return results"""
+        try:
+            result = self.brain.run_autonomous_optimization()
+            result['optimization_timestamp'] = datetime.now().isoformat()
+            result['system_uptime'] = time.time() - self.start_time
+            return result
+        except Exception as e:
+            logger.error(f'Error in autonomous optimization: {e}')
+            return {'error': str(e)}
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get comprehensive system status"""
+        try:
+            brain_status = self.brain.get_status()
+            analytics_status = self.analytics_reporter.get_real_time_status()
+            return {'system_info': {'version': '1.0.0-autonomous', 'uptime_seconds': time.time() - self.start_time, 'start_time': datetime.fromtimestamp(self.start_time).isoformat()}, 'brain_status': brain_status, 'analytics_status': analytics_status, 'autonomous_features': {'analytics_dashboard': True, 'performance_monitoring': True, 'routing_optimization': True, 'workflow_generation': True, 'dependency_analysis': True}, 'integration_status': {'opencode_compatible': True, 'model_switching': True, 'all_skills_loaded': len(self.brain.skills.skills), 'tui_available': self.tui is not None}}
+        except Exception as e:
+            logger.error(f'Error getting system status: {e}')
+            return {'error': str(e)}
+
+    def export_configuration(self, filename: str=None) -> str:
+        """Export system configuration"""
+        if filename is None:
+            filename = f'neo_clone_config_{int(time.time())}.json'
+        try:
+            config_data = {'system_config': {'version': '1.0.0-autonomous', 'uptime': time.time() - self.start_time, 'start_time': datetime.fromtimestamp(self.start_time).isoformat()}, 'brain_config': {'current_model': self.brain.current_model, 'provider': self.brain.config.provider, 'model_name': self.brain.config.model_name, 'opencode_model': self.brain.config.opencode_model}, 'autonomous_features': {'enabled': True, 'analytics_active': True, 'optimization_active': True, 'workflow_generation_active': True}, 'skills': {'total_count': len(self.brain.skills.skills), 'skill_names': list(self.brain.skills.skills.keys())}, 'session_stats': self.brain.session_stats.copy()}
+            with open(filename, 'w') as f:
+                json.dump(config_data, f, indent=2, default=str)
+            return filename
+        except Exception as e:
+            logger.error(f'Error exporting configuration: {e}')
+            return f'Error: {str(e)}'
+
+    def shutdown(self) -> Dict[str, Any]:
+        """Graceful shutdown with final analytics"""
+        try:
+            final_report = self.generate_analytics_report('json')
+            shutdown_info = {'shutdown_time': datetime.now().isoformat(), 'total_uptime': time.time() - self.start_time, 'final_session_stats': self.brain.session_stats, 'optimization_count': len(self.brain.optimization_history), 'final_report': final_report}
+            logger.info('Autonomous Neo-Clone system shutdown complete')
+            return shutdown_info
+        except Exception as e:
+            logger.error(f'Error during shutdown: {e}')
+            return {'error': str(e)}
+
+def create_autonomous_system(config: Optional[Config]=None, enable_tui: bool=True) -> AutonomousNeoCloneSystem:
+    """
+    Create a new autonomous Neo-Clone system instance
+    
+    This is the main entry point for using the autonomous system in Opencode projects.
+    
+    Example usage:
+        from autonomous_neo_clone_integration import create_autonomous_system
+        
+        # Create system with Opencode integration
+        system = create_autonomous_system()
+        
+        # Process user input
+        response = system.process("Hello, analyze this text for sentiment")
+        print(response["response"])
+        
+        # Run optimization
+        result = system.run_autonomous_optimization()
+        
+        # Generate analytics report
+        report_file = system.generate_analytics_report("markdown")
+    """
+    return AutonomousNeoCloneSystem(config, enable_tui)
+
+def quick_chat(user_input: str, config: Optional[Config]=None) -> str:
+    """
+    Quick chat interface for simple interactions
+    
+    Example:
+        response = quick_chat("What is the sentiment of this text: I love this!")
+        print(response)
+    """
+    system = create_autonomous_system(config, enable_tui=False)
+    result = system.process(user_input)
+    return result.get('response', 'No response generated')
+
+def get_system_info() -> Dict[str, Any]:
+    """Get system information and capabilities"""
+    system = create_autonomous_system(enable_tui=False)
+    return system.get_system_status()
+
+@lru_cache(maxsize=128)
+def main():
+    """Main entry point for standalone execution"""
+    import argparse
+    parser = argparse.ArgumentParser(description='Autonomous Neo-Clone System')
+    parser.add_argument('--mode', choices=['tui', 'chat', 'analytics', 'info'], default='tui', help='Run mode: tui (interactive), chat (single query), analytics (generate report), info (system info)')
+    parser.add_argument('--config', help='Path to configuration file')
+    parser.add_argument('--no-tui', action='store_true', help='Disable TUI interface')
+    args = parser.parse_args()
+    try:
+        config = load_config() if not args.config else Config()
+        if args.mode == 'tui':
+            system = create_autonomous_system(config, enable_tui=not args.no_tui)
+            system.run_tui()
+        elif args.mode == 'chat':
+            user_input = input('Enter your message: ')
+            system = create_autonomous_system(config, enable_tui=False)
+            result = system.process(user_input)
+            print(f"Response: {result.get('response', 'No response')}")
+        elif args.mode == 'analytics':
+            system = create_autonomous_system(config, enable_tui=False)
+            report_file = system.generate_analytics_report('markdown')
+            print(f'Analytics report generated: {report_file}')
+        elif args.mode == 'info':
+            system = create_autonomous_system(config, enable_tui=False)
+            status = system.get_system_status()
+            print(json.dumps(status, indent=2, default=str))
+    except KeyboardInterrupt:
+        print('\nShutting down...')
+    except Exception as e:
+        print(f'Error: {e}')
+if __name__ == '__main__':
+    main()

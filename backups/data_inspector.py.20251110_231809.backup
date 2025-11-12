@@ -1,0 +1,214 @@
+from skills import BaseSkill
+import os
+import json
+import csv
+from collections import Counter, defaultdict
+from datetime import datetime
+import statistics
+from functools import lru_cache
+
+class DataInspectorSkill(BaseSkill):
+
+    @property
+    def name(self):
+        return 'data_inspector'
+
+    @property
+    def description(self):
+        return 'Advanced data inspection with statistical analysis, data quality assessment, and insights generation for CSV, JSON, and text files.'
+
+    @property
+    def parameters(self):
+        return {'file_path': 'string - Path to the data file to analyze', 'data_type': 'string - Type of data file (csv, json, txt). Auto-detected if not specified', 'analysis_depth': 'string - Depth of analysis (basic, detailed, comprehensive). Default: detailed', 'sample_size': 'integer - Number of rows to sample for large files (default: 1000)'}
+
+    @property
+    def example_usage(self):
+        return 'Analyze the sales data CSV file and provide insights.'
+
+    @lru_cache(maxsize=128)
+    def execute(self, params):
+        file_path = params.get('file_path', '')
+        data_type = params.get('data_type', '')
+        analysis_depth = params.get('analysis_depth', 'detailed')
+        sample_size = params.get('sample_size', 1000)
+        if not file_path or not os.path.exists(file_path):
+            return {'error': f'File not found: {file_path}'}
+        try:
+            if not data_type:
+                data_type = self._detect_file_type(file_path)
+            if data_type == 'csv':
+                return self._analyze_csv(file_path, analysis_depth, sample_size)
+            elif data_type == 'json':
+                return self._analyze_json(file_path, analysis_depth)
+            elif data_type == 'txt':
+                return self._analyze_text(file_path, analysis_depth)
+            else:
+                return {'error': f'Unsupported data type: {data_type}'}
+        except Exception as e:
+            return {'error': f'Analysis failed: {str(e)}'}
+
+    def _detect_file_type(self, file_path):
+        """Detect file type based on extension."""
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == '.csv':
+            return 'csv'
+        elif ext == '.json':
+            return 'json'
+        elif ext in ['.txt', '.log', '.md']:
+            return 'txt'
+        else:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    first_line = f.readline().strip()
+                    if first_line.startswith('{') or first_line.startswith('['):
+                        return 'json'
+                    elif ',' in first_line or '\t' in first_line:
+                        return 'csv'
+                    else:
+                        return 'txt'
+            except:
+                return 'txt'
+
+    def _analyze_csv(self, file_path, analysis_depth, sample_size):
+        """Analyze CSV file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                sample = f.read(1024)
+                f.seek(0)
+                sniffer = csv.Sniffer()
+                delimiter = sniffer.sniff(sample).delimiter
+                reader = csv.DictReader(f, delimiter=delimiter)
+                rows = list(reader)
+            if not rows:
+                return {'error': 'CSV file is empty'}
+            if len(rows) > sample_size:
+                import random
+                rows = random.sample(rows, sample_size)
+            columns = list(rows[0].keys())
+            num_rows = len(rows)
+            result = {'file_type': 'csv', 'total_rows': num_rows, 'columns': len(columns), 'column_names': columns, 'analysis_timestamp': datetime.now().isoformat()}
+            if analysis_depth in ['detailed', 'comprehensive']:
+                column_stats = {}
+                for col in columns:
+                    values = [row[col] for row in rows if col in row]
+                    non_empty = [v for v in values if v and str(v).strip()]
+                    data_type = self._infer_data_type(non_empty)
+                    stats = {'data_type': data_type, 'total_values': len(values), 'non_empty_values': len(non_empty), 'missing_percentage': (len(values) - len(non_empty)) / len(values) * 100 if values else 0}
+                    if data_type in ['integer', 'float'] and non_empty:
+                        numeric_values = [float(v) for v in non_empty if self._is_numeric(v)]
+                        if numeric_values:
+                            stats.update({'min': min(numeric_values), 'max': max(numeric_values), 'mean': statistics.mean(numeric_values), 'median': statistics.median(numeric_values)})
+                    if data_type == 'string' and non_empty:
+                        stats.update({'unique_values': len(set(non_empty)), 'avg_length': sum((len(str(v)) for v in non_empty)) / len(non_empty)})
+                    column_stats[col] = stats
+                result['column_statistics'] = column_stats
+            if analysis_depth == 'comprehensive':
+                result['insights'] = self._generate_insights(rows, columns)
+            return result
+        except Exception as e:
+            return {'error': f'CSV analysis failed: {str(e)}'}
+
+    def _analyze_json(self, file_path, analysis_depth):
+        """Analyze JSON file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                if data and isinstance(data[0], dict):
+                    return self._analyze_json_array(data, analysis_depth)
+                else:
+                    return {'file_type': 'json', 'data_type': 'array', 'length': len(data), 'element_types': list(set((type(item).__name__ for item in data)))}
+            elif isinstance(data, dict):
+                return self._analyze_json_object(data, analysis_depth)
+            else:
+                return {'file_type': 'json', 'data_type': type(data).__name__, 'value': str(data)[:100]}
+        except Exception as e:
+            return {'error': f'JSON analysis failed: {str(e)}'}
+
+    def _analyze_json_array(self, data, analysis_depth):
+        """Analyze JSON array of objects."""
+        if not data:
+            return {'data_type': 'empty_array'}
+        sample = data[:min(1000, len(data))]
+        keys = list(sample[0].keys()) if sample and isinstance(sample[0], dict) else []
+        result = {'file_type': 'json', 'data_type': 'array_of_objects', 'total_objects': len(data), 'keys': keys}
+        if analysis_depth in ['detailed', 'comprehensive'] and keys:
+            key_stats = {}
+            for key in keys:
+                values = [obj.get(key) for obj in sample if isinstance(obj, dict)]
+                non_none = [v for v in values if v is not None]
+                key_stats[key] = {'data_type': self._infer_data_type(non_none), 'null_percentage': (len(values) - len(non_none)) / len(values) * 100 if values else 0}
+            result['key_statistics'] = key_stats
+        return result
+
+    def _analyze_json_object(self, data, analysis_depth):
+        """Analyze JSON object."""
+        result = {'file_type': 'json', 'data_type': 'object', 'keys': list(data.keys()), 'total_keys': len(data)}
+        if analysis_depth in ['detailed', 'comprehensive']:
+            key_types = {k: type(v).__name__ for (k, v) in data.items()}
+            result['key_types'] = key_types
+        return result
+
+    def _analyze_text(self, file_path, analysis_depth):
+        """Analyze text file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            lines = content.split('\n')
+            words = content.split()
+            chars = len(content)
+            result = {'file_type': 'text', 'total_characters': chars, 'total_words': len(words), 'total_lines': len(lines), 'avg_words_per_line': len(words) / len(lines) if lines else 0}
+            if analysis_depth in ['detailed', 'comprehensive']:
+                word_freq = Counter(words)
+                common_words = word_freq.most_common(20)
+                result.update({'unique_words': len(word_freq), 'most_common_words': [{'word': word, 'count': count} for (word, count) in common_words], 'avg_word_length': sum((len(word) for word in words)) / len(words) if words else 0})
+            return result
+        except Exception as e:
+            return {'error': f'Text analysis failed: {str(e)}'}
+
+    def _infer_data_type(self, values):
+        """Infer data type from a list of values."""
+        if not values:
+            return 'empty'
+        numeric_count = sum((1 for v in values if self._is_numeric(str(v))))
+        if numeric_count == len(values):
+            int_count = sum((1 for v in values if str(v).isdigit() or (str(v).startswith('-') and str(v)[1:].isdigit())))
+            return 'integer' if int_count == len(values) else 'float'
+        date_count = sum((1 for v in values if self._is_date(str(v))))
+        if date_count > len(values) * 0.8:
+            return 'date'
+        return 'string'
+
+    def _is_numeric(self, value):
+        """Check if value is numeric."""
+        try:
+            float(value)
+            return True
+        except:
+            return False
+
+    def _is_date(self, value):
+        """Check if value looks like a date."""
+        import re
+        date_patterns = ['\\d{4}-\\d{2}-\\d{2}', '\\d{2}/\\d{2}/\\d{4}', '\\d{2}-\\d{2}-\\d{4}']
+        return any((re.match(pattern, value) for pattern in date_patterns))
+
+    def _generate_insights(self, rows, columns):
+        """Generate insights from data."""
+        insights = []
+        numeric_cols = []
+        for col in columns:
+            values = [row[col] for row in rows if col in row and row[col]]
+            if values and all((self._is_numeric(str(v)) for v in values)):
+                numeric_cols.append(col)
+        if len(numeric_cols) >= 2:
+            insights.append(f'Found {len(numeric_cols)} numeric columns that could be analyzed for correlations')
+        missing_data_cols = []
+        for col in columns:
+            missing = sum((1 for row in rows if not row.get(col) or str(row[col]).strip() == ''))
+            if missing > len(rows) * 0.1:
+                missing_data_cols.append(col)
+        if missing_data_cols:
+            insights.append(f"Columns with high missing data: {', '.join(missing_data_cols)}")
+        insights.append(f'Dataset contains {len(rows)} rows and {len(columns)} columns')
+        return insights

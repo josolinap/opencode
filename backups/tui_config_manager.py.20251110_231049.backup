@@ -1,0 +1,218 @@
+from functools import lru_cache
+'\nNeo-Clone TUI Configuration Manager\nHandles persistent configuration, themes, and user preferences\n'
+import json
+import os
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from datetime import datetime
+
+@dataclass
+class ThemeConfig:
+    """Theme configuration"""
+    name: str
+    primary_color: str = 'blue'
+    secondary_color: str = 'cyan'
+    success_color: str = 'green'
+    warning_color: str = 'yellow'
+    error_color: str = 'red'
+    background_color: str = 'black'
+    text_color: str = 'white'
+    border_style: str = 'rounded'
+
+@dataclass
+class PanelConfig:
+    """Panel configuration"""
+    name: str
+    visible: bool = True
+    size_ratio: float = 1.0
+    position: str = 'left'
+    auto_refresh: bool = True
+    refresh_rate: float = 1.0
+
+@dataclass
+class TUIPreferences:
+    """User preferences for TUI"""
+    theme: str = 'dark'
+    auto_save: bool = True
+    max_history: int = 1000
+    refresh_rate: float = 10.0
+    show_line_numbers: bool = True
+    word_wrap: bool = True
+    enable_animations: bool = True
+    skill_timeout: float = 30.0
+    confirm_before_exit: bool = True
+    startup_message: str = 'Welcome to Neo-Clone Superior TUI!'
+    panels: Dict[str, PanelConfig] = None
+    custom_themes: Dict[str, ThemeConfig] = None
+
+    def __post_init__(self):
+        if self.panels is None:
+            self.panels = {'chat': PanelConfig('chat', True, 3.0, 'left', True, 1.0), 'context': PanelConfig('context', True, 1.0, 'left', True, 2.0), 'skills': PanelConfig('skills', True, 1.0, 'right', True, 5.0), 'files': PanelConfig('files', True, 1.0, 'right', True, 3.0), 'analytics': PanelConfig('analytics', True, 1.0, 'right', True, 2.0)}
+        if self.custom_themes is None:
+            self.custom_themes = {'dark': ThemeConfig('dark'), 'light': ThemeConfig('light', 'blue', 'blue', 'green', 'yellow', 'red', 'white', 'black'), 'hacker': ThemeConfig('hacker', 'green', 'lime', 'green', 'yellow', 'red', 'black', 'green'), 'ocean': ThemeConfig('ocean', 'cyan', 'blue', 'aquamarine', 'yellow', 'red', 'navy', 'white'), 'sunset': ThemeConfig('sunset', 'orange', 'red', 'gold', 'yellow', 'red', 'dark_blue', 'white')}
+
+class ConfigManager:
+    """Manages TUI configuration persistence and loading"""
+
+    def __init__(self, config_dir: str='.neo_clone_tui'):
+        self.config_dir = Path(config_dir)
+        self.config_file = self.config_dir / 'config.json'
+        self.themes_file = self.config_dir / 'themes.json'
+        self.history_file = self.config_dir / 'history.json'
+        self.preferences = TUIPreferences()
+        self._ensure_config_dir()
+        self._load_config()
+
+    def _ensure_config_dir(self):
+        """Ensure configuration directory exists"""
+        self.config_dir.mkdir(exist_ok=True)
+
+    @lru_cache(maxsize=128)
+    def _load_config(self):
+        """Load configuration from file"""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                for (key, value) in config_data.items():
+                    if key == 'panels':
+                        panels = {}
+                        for (panel_name, panel_data) in value.items():
+                            panels[panel_name] = PanelConfig(**panel_data)
+                        self.preferences.panels = panels
+                    elif key == 'custom_themes':
+                        themes = {}
+                        for (theme_name, theme_data) in value.items():
+                            themes[theme_name] = ThemeConfig(**theme_data)
+                        self.preferences.custom_themes = themes
+                    elif hasattr(self.preferences, key):
+                        setattr(self.preferences, key, value)
+                print(f'✅ Configuration loaded from {self.config_file}')
+            except Exception as e:
+                print(f'⚠️ Error loading config: {e}. Using defaults.')
+
+    def save_config(self):
+        """Save current configuration to file"""
+        try:
+            config_data = asdict(self.preferences)
+            config_data['panels'] = {name: asdict(panel) for (name, panel) in self.preferences.panels.items()}
+            config_data['custom_themes'] = {name: asdict(theme) for (name, theme) in self.preferences.custom_themes.items()}
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, default=str)
+            print(f'✅ Configuration saved to {self.config_file}')
+        except Exception as e:
+            print(f'❌ Error saving config: {e}')
+
+    def get_theme(self, theme_name: Optional[str]=None) -> ThemeConfig:
+        """Get theme configuration"""
+        theme_name = theme_name or self.preferences.theme
+        if theme_name in self.preferences.custom_themes:
+            return self.preferences.custom_themes[theme_name]
+        else:
+            return self.preferences.custom_themes.get('dark', ThemeConfig('dark'))
+
+    def add_custom_theme(self, theme: ThemeConfig):
+        """Add a custom theme"""
+        self.preferences.custom_themes[theme.name] = theme
+        self.save_config()
+
+    def update_panel_config(self, panel_name: str, **kwargs):
+        """Update panel configuration"""
+        if panel_name in self.preferences.panels:
+            panel = self.preferences.panels[panel_name]
+            for (key, value) in kwargs.items():
+                if hasattr(panel, key):
+                    setattr(panel, key, value)
+            self.save_config()
+
+    def get_panel_config(self, panel_name: str) -> Optional[PanelConfig]:
+        """Get panel configuration"""
+        return self.preferences.panels.get(panel_name)
+
+    def save_history(self, history_data: List[Dict[str, Any]]):
+        """Save chat history"""
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(history_data, f, indent=2, default=str)
+        except Exception as e:
+            print(f'❌ Error saving history: {e}')
+
+    def load_history(self) -> List[Dict[str, Any]]:
+        """Load chat history"""
+        if self.history_file.exists():
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f'⚠️ Error loading history: {e}')
+        return []
+
+    def export_config(self, export_path: str):
+        """Export configuration to specified path"""
+        try:
+            export_data = {'preferences': asdict(self.preferences), 'export_timestamp': datetime.now().isoformat(), 'version': '1.0'}
+            export_data['preferences']['panels'] = {name: asdict(panel) for (name, panel) in self.preferences.panels.items()}
+            export_data['preferences']['custom_themes'] = {name: asdict(theme) for (name, theme) in self.preferences.custom_themes.items()}
+            with open(export_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, default=str)
+            print(f'✅ Configuration exported to {export_path}')
+        except Exception as e:
+            print(f'❌ Error exporting config: {e}')
+
+    def import_config(self, import_path: str):
+        """Import configuration from specified path"""
+        try:
+            with open(import_path, 'r', encoding='utf-8') as f:
+                import_data = json.load(f)
+            if 'preferences' in import_data:
+                config_data = import_data['preferences']
+                for (key, value) in config_data.items():
+                    if key == 'panels':
+                        panels = {}
+                        for (panel_name, panel_data) in value.items():
+                            panels[panel_name] = PanelConfig(**panel_data)
+                        self.preferences.panels = panels
+                    elif key == 'custom_themes':
+                        themes = {}
+                        for (theme_name, theme_data) in value.items():
+                            themes[theme_name] = ThemeConfig(**theme_data)
+                        self.preferences.custom_themes = themes
+                    elif hasattr(self.preferences, key):
+                        setattr(self.preferences, key, value)
+                self.save_config()
+                print(f'✅ Configuration imported from {import_path}')
+            else:
+                print('❌ Invalid configuration file format')
+        except Exception as e:
+            print(f'❌ Error importing config: {e}')
+
+    def reset_to_defaults(self):
+        """Reset configuration to defaults"""
+        self.preferences = TUIPreferences()
+        self.save_config()
+        print('✅ Configuration reset to defaults')
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get configuration statistics"""
+        return {'config_dir': str(self.config_dir), 'config_file': str(self.config_file), 'config_exists': self.config_file.exists(), 'history_file': str(self.history_file), 'history_exists': self.history_file.exists(), 'current_theme': self.preferences.theme, 'total_themes': len(self.preferences.custom_themes), 'total_panels': len(self.preferences.panels), 'visible_panels': len([p for p in self.preferences.panels.values() if p.visible]), 'last_modified': datetime.fromtimestamp(self.config_file.stat().st_mtime).isoformat() if self.config_file.exists() else None}
+BUILTIN_THEMES = {'dark': ThemeConfig('dark'), 'light': ThemeConfig('light', 'blue', 'blue', 'green', 'yellow', 'red', 'white', 'black'), 'hacker': ThemeConfig('hacker', 'green', 'lime', 'green', 'yellow', 'red', 'black', 'green'), 'ocean': ThemeConfig('ocean', 'cyan', 'blue', 'aquamarine', 'yellow', 'red', 'navy', 'white'), 'sunset': ThemeConfig('sunset', 'orange', 'red', 'gold', 'yellow', 'red', 'dark_blue', 'white'), 'matrix': ThemeConfig('matrix', 'bright_green', 'green', 'lime', 'yellow', 'red', 'black', 'green'), 'cyberpunk': ThemeConfig('cyberpunk', 'magenta', 'cyan', 'lime', 'yellow', 'red', 'black', 'magenta'), 'minimal': ThemeConfig('minimal', 'white', 'gray', 'white', 'yellow', 'red', 'black', 'white')}
+
+def main():
+    """Test configuration manager"""
+    config_manager = ConfigManager()
+    print('Neo-Clone TUI Configuration Manager')
+    print('=' * 50)
+    stats = config_manager.get_stats()
+    print('Configuration Stats:')
+    for (key, value) in stats.items():
+        print(f'  {key}: {value}')
+    print('\nAvailable Themes:')
+    for theme_name in config_manager.preferences.custom_themes:
+        print(f'  • {theme_name}')
+    print('\nPanel Configurations:')
+    for (panel_name, panel) in config_manager.preferences.panels.items():
+        status = 'ON' if panel.visible else 'OFF'
+        print(f'  {status} {panel_name}: ratio={panel.size_ratio}, refresh={panel.refresh_rate}s')
+if __name__ == '__main__':
+    main()

@@ -29,7 +29,7 @@ export const ModelsCommand = cmd({
   builder: (yargs) =>
     yargs
       .positional("action", {
-        describe: "Action to perform: list, search, recommend, info",
+        describe: "Action to perform: list, search, recommend, info, free",
         type: "string",
         default: "list",
       })
@@ -45,9 +45,10 @@ export const ModelsCommand = cmd({
       })
       .option("cost", {
         alias: "c",
-        describe: "Filter by cost: free, paid",
+        describe: "Filter by cost: free, paid (default: free)",
         type: "string",
         choices: ["free", "paid"],
+        default: "free",
       })
       .option("capabilities", {
         alias: "cap",
@@ -108,8 +109,11 @@ export const ModelsCommand = cmd({
           case "provider":
             await manageProvider(argv)
             break
+          case "free":
+            await listFreeModels(argv)
+            break
           default:
-            console.log("Available actions: list, search, recommend, info, providers, provider")
+            console.log("Available actions: list, search, recommend, info, providers, provider, free")
             console.log("Use --help for more information")
         }
       },
@@ -118,6 +122,15 @@ export const ModelsCommand = cmd({
 })
 
 // ==================== MODEL QUERY FUNCTIONS ====================
+
+async function listFreeModels(argv: any) {
+  console.log("🆓 Free Models Available for OpenCode Integration")
+  console.log("=".repeat(60))
+
+  // Force cost to be free
+  argv.cost = "free"
+  await listModels(argv)
+}
 
 async function listModels(argv: any) {
   const providers = await Provider.list()
