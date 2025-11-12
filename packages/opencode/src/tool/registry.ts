@@ -10,6 +10,8 @@ import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
+import { NeoCloneTool } from "./neo-clone"
+import { ModelSelectorTool } from "./model-selector"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
@@ -88,6 +90,8 @@ export namespace ToolRegistry {
       TodoWriteTool,
       TodoReadTool,
       TaskTool,
+      NeoCloneTool,
+      ModelSelectorTool,
       ...custom,
     ]
   }

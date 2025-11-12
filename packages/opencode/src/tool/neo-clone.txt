@@ -1,0 +1,23 @@
+Execute queries using the Neo-Clone AI assistant system, a Python-based AI assistant with enhanced capabilities.
+
+Neo-Clone is an intelligent AI assistant with the following features:
+- Multiple specialized skills (code generation, text analysis, data inspection, ML training, file management, web search)
+- Persistent memory system for conversation history
+- Intelligent LLM presets for different use cases
+- Plugin system for extensibility
+- MiniMax agent for dynamic reasoning and skill generation
+
+Usage:
+- Use 'cli' mode for interactive conversations with Neo-Clone
+- Use 'direct' mode for direct brain integration testing
+- The tool will automatically handle subprocess execution of the Python Neo-Clone system
+- Output is cleaned of emojis and truncated if too long
+- Default timeout is 5 minutes for AI processing
+
+Examples:
+- "Generate Python code for a neural network"
+- "Analyze this text: I love machine learning!"
+- "What skills do you have available?"
+- "Create a data visualization script"
+
+The Neo-Clone system integrates with opencode's configuration and can use the same LLM providers and models.

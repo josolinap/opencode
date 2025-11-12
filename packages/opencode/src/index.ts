@@ -1,16 +1,14 @@
+// Core dependencies
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
+
+// CLI Commands
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { Log } from "./util/log"
 import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { ModelsCommand } from "./cli/cmd/models"
-import { UI } from "./cli/ui"
-import { Installation } from "./installation"
-import { NamedError } from "./util/error"
-import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { TuiCommand } from "./cli/cmd/tui"
 import { DebugCommand } from "./cli/cmd/debug"
@@ -19,12 +17,19 @@ import { McpCommand } from "./cli/cmd/mcp"
 import { GithubCommand } from "./cli/cmd/github"
 import { ExportCommand } from "./cli/cmd/export"
 import { AttachCommand } from "./cli/cmd/attach"
+import { OrchestrateCommand } from "./cli/cmd/orchestrate"
 
+// Utilities and Core Services
+import { Log } from "./util/log"
+import { UI } from "./cli/ui"
+import { Installation } from "./installation"
+import { NamedError } from "./util/error"
+import { FormatError } from "./cli/error"
+
+// Global cancellation controller for graceful shutdown
 const cancel = new AbortController()
 
-try {
-} catch (e) {}
-
+// Global error handlers for unhandled promise rejections and exceptions
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
     e: e instanceof Error ? e.message : e,
@@ -84,6 +89,7 @@ const cli = yargs(hideBin(process.argv))
   .command(StatsCommand)
   .command(ExportCommand)
   .command(GithubCommand)
+  .command(OrchestrateCommand)
   .fail((msg) => {
     if (
       msg.startsWith("Unknown argument") ||
