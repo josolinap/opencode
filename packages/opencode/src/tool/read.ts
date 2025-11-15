@@ -131,6 +131,8 @@ export const ReadTool = Tool.define("read", {
     })
     const preview = raw.slice(0, 20).join("\n")
 
+    const summaryText = lines.slice(0, Math.min(5, lines.length)).join(" ")
+
     let output = "<file>\n"
     output += content.join("\n")
 
@@ -154,6 +156,7 @@ export const ReadTool = Tool.define("read", {
       output,
       metadata: {
         preview,
+        summary: summaryText,
       },
     }
   },
@@ -178,9 +181,10 @@ function isImageFile(filePath: string): string | false {
   }
 }
 
-async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolean> {
+export async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolean> {
+  // re-use original binary check by delegating to previous function if available
+  // Minimal compatibility: reuse previous implementation block
   const ext = path.extname(filepath).toLowerCase()
-  // binary check for common non-text extensions
   switch (ext) {
     case ".zip":
     case ".tar":
