@@ -1,0 +1,117 @@
+Initialized 7 AI models with capabilities
+Starting Direct Integration Test...
+Neo-Clone Direct Integration Test
+========================================
+2025-11-14 13:41:44,757 INFO config: Found configuration file: C:\Users\S\opencode\neo-clone\opencode.json
+[OK] Configuration loaded: ollama
+[OK] Memory system initialized
+2025-11-14 13:41:44,764 INFO neo.app: System event [direct_test]: Direct integration test started
+[OK] Enhanced logging system initialized
+[OK] Preset manager initialized
+2025-11-14 13:41:44,766 INFO plugin_system: Plugin Manager initialized: dir=plugins, security=restricted
+[OK] Plugin system initialized
+2025-11-14 13:41:44,766 INFO skills: Registered skill: CodeGenerationSkill in category code_generation
+2025-11-14 13:41:44,766 INFO skills: Registered skill: DataAnalysisSkill in category data_analysis
+2025-11-14 13:41:44,766 INFO skills: Registered skill: ConversationSkill in category general
+2025-11-14 13:41:44,766 INFO skills: Registered skill: PlanningSkill in category general
+2025-11-14 13:41:44,766 INFO skills: Registered skill: WebSearchSkill in category general
+2025-11-14 13:41:44,766 INFO skills: Registered skill: MLTrainingSkill in category data_analysis
+2025-11-14 13:41:44,766 INFO skills: Registered skill: FileManagerSkill in category general
+2025-11-14 13:41:44,767 INFO skills: Registered skill: TextAnalysisSkill in category data_analysis
+2025-11-14 13:41:44,767 INFO skills: Registered skill: DataInspectorSkill in category data_analysis
+2025-11-14 13:41:44,767 INFO skills: Registered skill: DebuggingSkill in category code_generation
+2025-11-14 13:41:44,767 INFO skills: Registered skill: OptimizationSkill in category code_generation
+2025-11-14 13:41:44,767 INFO skills: Registered skill: AdvancedReasoningSkill in category general
+2025-11-14 13:41:44,767 INFO skills: Skills Manager initialized with built-in skills
+[OK] Skills manager initialized with 12 skills
+2025-11-14 13:41:45,016 INFO persistent_memory: Initialized persistent memory: session=session_20251114_134144_65500daa
+2025-11-14 13:41:45,016 INFO persistent_memory: Memory directory: data\memory
+2025-11-14 13:41:45,016 INFO persistent_memory: Loaded 12 conversations
+2025-11-14 13:41:45,017 INFO vector_memory: Loaded 0 vectors from disk
+2025-11-14 13:41:45,049 INFO vector_memory: Started background consolidation tasks
+2025-11-14 13:41:45,049 INFO vector_memory: Initialized vector memory: 0 vectors loaded
+2025-11-14 13:41:45,071 INFO cache_system: Started background cache cleanup
+2025-11-14 13:41:45,072 INFO cache_system: Cache initialized: strategy=lru, max_size=1000, max_memory=100MB
+2025-11-14 13:41:45,072 INFO base_brain: Base Brain initialized: mode=enhanced, strategy=direct
+2025-11-14 13:41:45,072 INFO enhanced_brain: Initialized 5 collaborative agents
+2025-11-14 13:41:45,072 INFO enhanced_brain: Enhanced Brain initialized: strategy=hybrid, collaboration=True
+[OK] Enhanced Brain initialized
+2025-11-14 13:41:45,072 INFO base_brain: Base Brain initialized: mode=standard, strategy=direct
+2025-11-14 13:41:45,072 INFO skills_system: Registered skill: CodeGenerationSkill in category code_generation
+2025-11-14 13:41:45,072 INFO skills_system: Registered skill: DataAnalysisSkill in category data_analysis
+2025-11-14 13:41:45,072 INFO skills_system: Registered skill: ConversationSkill in category general
+2025-11-14 13:41:45,072 INFO skills_system: Registered skill: PlanningSkill in category planning
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: DebuggingSkill in category debugging
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: OptimizationSkill in category optimization
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: ResearchSkill in category research
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: WebSearchSkill in category web_search
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: FileManagementSkill in category file_management
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: TextAnalysisSkill in category text_analysis
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: MLTrainingSkill in category ml_training
+2025-11-14 13:41:45,073 INFO skills_system: Registered skill: ProjectManagementSkill in category project_management
+2025-11-14 13:41:45,073 INFO skills_system: Skills Manager initialized with built-in skills
+2025-11-14 13:41:45,073 INFO minimax_agent: MiniMax Agent initialized: strategy=a_star, max_depth=7
+[OK] MiniMax Agent initialized
+
+Testing with message: Hello, this is a test message for Neo-Clone integration.
+2025-11-14 13:41:45,080 INFO minimax_agent: MiniMax processing completed: 0.006s, confidence=0.00
+[OK] MiniMax Response: I have completed the reasoning process with 0.00 confidence....
+[OK] Confidence: 0.00
+[DEBUG] Testing memory functionality...
+2025-11-14 13:42:45,084 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:43:45,112 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:44:45,145 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:45:45,164 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:46:45,196 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:47:45,242 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:48:45,257 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:49:45,298 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:50:45,315 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:51:45,329 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:52:45,349 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:53:45,367 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:54:45,380 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:55:45,396 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:56:45,405 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:57:45,418 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:58:45,431 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 13:59:45,447 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:00:45,459 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:01:45,482 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:02:45,491 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:03:45,519 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:04:45,531 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:05:45,543 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:06:45,568 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:07:45,580 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:08:45,614 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:09:45,628 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:10:45,644 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:11:45,655 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:12:45,709 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:13:45,719 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:14:45,727 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:15:45,735 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:16:45,743 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:17:45,749 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:18:45,759 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:19:45,766 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:20:45,773 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:21:45,816 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:22:45,857 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:23:45,868 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:24:45,898 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:25:45,907 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:26:45,915 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:27:45,924 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:28:45,936 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:29:45,942 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:30:45,949 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:31:45,961 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:32:45,985 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:33:45,999 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:34:46,003 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:35:46,013 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:36:46,023 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:37:46,057 INFO cache_system: Cache cleanup: removed 0 expired entries
+2025-11-14 14:38:46,077 INFO cache_system: Cache cleanup: removed 0 expired entries

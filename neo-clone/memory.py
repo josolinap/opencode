@@ -12,13 +12,15 @@ Implements:
 import json
 import os
 import shutil
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
-import logging
 import threading
 from datetime import timedelta
+from dataclasses import dataclass, fields, asdict
+from typing import Optional, Dict, Any, List
+
+logger = logging.getLogger("neo.memory")
 
 @dataclass
 class MemoryEntry:
@@ -113,16 +115,55 @@ class PersistentMemory:
             if self.conversations_file.exists():
                 with open(self.conversations_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    return [MemoryEntry(**entry) for entry in data]
+                    entries = []
+                    for entry in data:
+                        try:
+                            # Handle field name mapping for backward compatibility
+                            field_mapping = {
+                                'user_input': 'user_message',  # Old field name -> new field name
+                            }
+
+                            # Apply field mapping
+                            normalized_entry = {}
+                            for k, v in entry.items():
+                                # Skip the 'id' field which doesn't exist in MemoryEntry
+                                if k == 'id':
+                                    continue
+                                # Map old field names to new ones
+                                mapped_key = field_mapping.get(k, k)
+                                normalized_entry[mapped_key] = v
+
+                            # Filter out unknown fields to handle schema changes gracefully
+                            valid_fields = {field.name for field in fields(MemoryEntry)}
+                            filtered_entry = {k: v for k, v in normalized_entry.items() if k in valid_fields}
+
+                            # Ensure required fields are present
+                            required_fields = ['timestamp', 'session_id', 'user_message', 'assistant_response']
+                            if not all(field in filtered_entry for field in required_fields):
+                                logger.warning(f"Skipping entry missing required fields: {list(filtered_entry.keys())}")
+                                continue
+
+                            entries.append(MemoryEntry(**filtered_entry))
+                        except Exception as e:
+                            logger.warning(f"Skipping invalid memory entry: {e}")
+                            continue
+                    return entries
             return []
         except Exception as e:
-            logger.warning(f"Failed to load conversations: {e}")
+            logger.error(f"Failed to load conversations: {e}")
+            # Return empty list on any error to prevent crashes
             return []
 
     def _save_conversations(self, entries: List[MemoryEntry]):
         """Save conversation history to JSON"""
         try:
-            data = [asdict(entry) for entry in entries]
+            data = []
+            for entry in entries:
+                try:
+                    data.append(asdict(entry))
+                except Exception as e:
+                    logger.warning(f"Skipping invalid memory entry during save: {e}")
+                    continue
             with open(self.conversations_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:

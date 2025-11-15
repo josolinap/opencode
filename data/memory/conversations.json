@@ -1,0 +1,11 @@
+[
+  {
+    "timestamp": "2025-11-13T14:49:39.366466",
+    "session_id": "session_20251113_144939",
+    "user_message": "\\\"/skills\\\"",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  }
+]

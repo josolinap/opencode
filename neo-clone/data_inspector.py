@@ -3,10 +3,12 @@ Data Inspector Skill for Neo-Clone
 Advanced data inspection with statistical analysis, data quality assessment, and insights generation for CSV, JSON, and text files.
 """
 
-from skills import BaseSkill, SkillResult
+from skills import BaseSkill, SkillParameter, SkillParameterType, SkillStatus
+from data_models import SkillResult, SkillContext, SkillCategory
 import os
 import json
 import csv
+import time
 from collections import Counter, defaultdict
 from datetime import datetime
 import statistics
@@ -20,30 +22,62 @@ logger = logging.getLogger(__name__)
 class DataInspectorSkill(BaseSkill):
 
     def __init__(self):
-        super().__init__(
-            name='data_inspector',
-            description='Advanced data inspection with statistical analysis, data quality assessment, and insights generation for CSV, JSON, and text files.',
-            example='Analyze the sales data CSV file and provide insights.'
-        )
+        super().__init__()
+        self.metadata.name = 'DataInspectorSkill'
+        self.metadata.category = SkillCategory.DATA_ANALYSIS
+        self.metadata.description = 'Advanced data inspection with statistical analysis, data quality assessment, and insights generation for CSV, JSON, and text files.'
+        self.metadata.capabilities = [
+            "csv_analysis",
+            "json_analysis", 
+            "text_analysis",
+            "data_quality_assessment",
+            "statistical_analysis"
+        ]
         self._cache = {}
         self._max_cache_size = 50
 
-    @property
-    def parameters(self):
+    def get_parameters(self) -> Dict[str, SkillParameter]:
         return {
-            'file_path': 'string - Path to the data file to analyze',
-            'data_type': 'string - Type of data file (csv, json, txt). Auto-detected if not specified',
-            'analysis_depth': 'string - Depth of analysis (basic, detailed, comprehensive). Default: detailed',
-            'sample_size': 'integer - Number of rows to sample for large files (default: 1000)'
+            'file_path': SkillParameter(
+                name='file_path',
+                param_type=SkillParameterType.STRING,
+                required=True,
+                description='Path to data file to analyze'
+            ),
+            'data_type': SkillParameter(
+                name='data_type',
+                param_type=SkillParameterType.STRING,
+                required=False,
+                default='',
+                description='Type of data file (csv, json, txt). Auto-detected if not specified'
+            ),
+            'analysis_depth': SkillParameter(
+                name='analysis_depth',
+                param_type=SkillParameterType.STRING,
+                required=False,
+                default='detailed',
+                description='Depth of analysis (basic, detailed, comprehensive). Default: detailed'
+            ),
+            'sample_size': SkillParameter(
+                name='sample_size',
+                param_type=SkillParameterType.INTEGER,
+                required=False,
+                default=1000,
+                description='Number of rows to sample for large files (default: 1000)'
+            )
         }
 
-    def execute(self, params):
+    async def _execute_async(self, context: SkillContext, **kwargs) -> SkillResult:
         """Execute data inspection with given parameters"""
+        start_time = time.time()
+        self.status = SkillStatus.RUNNING
+        
         try:
-            file_path = params.get('file_path', '')
-            data_type = params.get('data_type', '')
-            analysis_depth = params.get('analysis_depth', 'detailed')
-            sample_size = params.get('sample_size', 1000)
+            validated_params = self.validate_parameters(**kwargs)
+            file_path = validated_params.get('file_path', '')
+            data_type = validated_params.get('data_type', '')
+            analysis_depth = validated_params.get('analysis_depth', 'detailed')
+            sample_size = validated_params.get('sample_size', 1000)
 
             # Generate cache key
             cache_key = hashlib.md5(f'{file_path}_{data_type}_{analysis_depth}_{sample_size}'.encode()).hexdigest()
@@ -52,11 +86,23 @@ class DataInspectorSkill(BaseSkill):
             if cache_key in self._cache:
                 cached_result = self._cache[cache_key]
                 cached_result['cached'] = True
-                return SkillResult(True, "Data inspection completed (cached)", cached_result)
+                return SkillResult(
+                    success=True,
+                    output="Data inspection completed (cached)",
+                    skill_name=self.metadata.name,
+                    execution_time=0.001,
+                    metadata=cached_result
+                )
 
             # Validate input
             if not file_path or not os.path.exists(file_path):
-                return SkillResult(False, f"File not found: {file_path}")
+                return SkillResult(
+                    success=False,
+                    output=f"File not found: {file_path}",
+                    skill_name=self.metadata.name,
+                    execution_time=0.001,
+                    error_message="File not found"
+                )
 
             # Auto-detect data type if not specified
             if not data_type:
@@ -70,16 +116,43 @@ class DataInspectorSkill(BaseSkill):
             elif data_type == 'txt':
                 result = self._analyze_text(file_path, analysis_depth)
             else:
-                return SkillResult(False, f"Unsupported data type: {data_type}")
+                return SkillResult(
+                    success=False,
+                    output=f"Unsupported data type: {data_type}",
+                    skill_name=self.metadata.name,
+                    execution_time=0.001,
+                    error_message="Unsupported data type"
+                )
 
-            # Add to cache
+# Add to cache
             self._add_to_cache(cache_key, result)
 
-            return SkillResult(True, f"Data inspection completed for {os.path.basename(file_path)}", result)
+            execution_time = time.time() - start_time
+            self._update_performance_metrics(execution_time, True, {"file_type": data_type})
+            
+            return SkillResult(
+                success=True,
+                output=f"Data inspection completed for {os.path.basename(file_path)}",
+                skill_name=self.metadata.name,
+                execution_time=execution_time,
+                metadata=result
+            )
 
         except Exception as e:
+            self.status = SkillStatus.FAILED
+            execution_time = time.time() - start_time
+            self._update_performance_metrics(execution_time, False, {"error": str(e)})
+            
             logger.error(f"Data inspection failed: {str(e)}")
-            return SkillResult(False, f"Data inspection failed: {str(e)}")
+            return SkillResult(
+                success=False,
+                output=f"Data inspection failed: {str(e)}",
+                skill_name=self.metadata.name,
+                execution_time=execution_time,
+                error_message=str(e)
+            )
+        finally:
+            self.status = SkillStatus.IDLE
 
     def _detect_file_type(self, file_path: str) -> str:
         """Detect file type based on extension"""

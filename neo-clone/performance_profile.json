@@ -1,0 +1,38 @@
+{
+  "model_discovery": {
+    "total_time": 1.036740779876709,
+    "discovery_time": 6.890296936035156e-05,
+    "models_loaded": 0,
+    "free_models": 0,
+    "cache_stats": {
+      "total_models": 42,
+      "free_models": 42,
+      "paid_models": 0,
+      "should_rescan": 0,
+      "cache_size_kb": 13.326171875
+    },
+    "providers": []
+  },
+  "memory_system": {
+    "init_time": 0.007969379425048828,
+    "conversations": 0,
+    "session_id": "session_20251114_140504",
+    "memory_dir": "data\\memory"
+  },
+  "skills_system": {
+    "init_time": 0.5469253063201904,
+    "skill_count": 12,
+    "skills": [
+      "code_generation",
+      "data_analysis",
+      "conversation",
+      "planning",
+      "web_search"
+    ]
+  },
+  "summary": {
+    "total_init_time": 1.5916354656219482,
+    "components_profiled": 2,
+    "timestamp": 1763100305.0343747
+  }
+}

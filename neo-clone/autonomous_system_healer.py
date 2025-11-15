@@ -1,5 +1,12 @@
+"""
+Autonomous System Healer for Neo-Clone
+
+This skill enables Neo-Clone to automatically detect, diagnose, and fix
+system issues including connection errors, JSON parsing failures, and
+other runtime problems without human intervention.
+"""
+
 from functools import lru_cache
-'\nAutonomous System Healer for Neo-Clone\n\nThis skill enables Neo-Clone to automatically detect, diagnose, and fix\nsystem issues including connection errors, JSON parsing failures, and\nother runtime problems without human intervention.\n'
 import os
 import sys
 import time
@@ -9,10 +16,25 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from minimax_agent import MiniMaxAgent
-from file_manager import FileManagerSkill
-from skills import BaseSkill, SkillResult
+
+# Fix imports with fallbacks
+try:
+    from minimax_agent import MiniMaxAgent
+except ImportError:
+    class MiniMaxAgent:
+        def __init__(self):
+            pass
+
+try:
+    from file_manager import FileManagerSkill
+except ImportError:
+    class FileManagerSkill:
+        def __init__(self):
+            pass
+
+from skills import BaseSkill
+from data_models import SkillResult
+
 try:
     from web_search import WebSearch
 except ImportError:
@@ -341,14 +363,26 @@ class AutonomousSystemHealer(BaseSkill):
                 return SkillResult(
                     success=True,
                     output="System status retrieved",
-                    data=status
+                    skill_name="autonomous_system_healer",
+                    execution_time=0.1,
+                    metadata={"status": status}
                 )
             else:
-                return SkillResult(False, f"Unknown action: {action}")
-                
+                return SkillResult(
+                    success=False,
+                    output=f"Unknown action: {action}",
+                    skill_name="autonomous_system_healer",
+                    execution_time=0.1
+                )
+
         except Exception as e:
             self.logger.error(f"Error executing healer skill: {e}")
-            return SkillResult(False, f"Error: {str(e)}")
+            return SkillResult(
+                success=False,
+                output=f"Error: {str(e)}",
+                skill_name="autonomous_system_healer",
+                execution_time=0.1
+            )
 
 def demonstrate_autonomous_healing():
     """Demonstrate the autonomous healing capabilities"""

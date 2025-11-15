@@ -1,0 +1,362 @@
+{
+  "huggingface/DialoGPT-large": {
+    "model_id": "DialoGPT-large",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.956954",
+    "next_scan_allowed": "2025-11-21T14:51:42.956954",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/microsoft/DialoGPT-large"
+  },
+  "huggingface/CodeBERT-base": {
+    "model_id": "CodeBERT-base",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.960446",
+    "next_scan_allowed": "2025-11-21T14:51:42.960446",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/microsoft/CodeBERT-base"
+  },
+  "huggingface/Llama-2-7b-chat-hf": {
+    "model_id": "Llama-2-7b-chat-hf",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.963902",
+    "next_scan_allowed": "2025-11-21T14:51:42.963902",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
+  },
+  "huggingface/GPT2": {
+    "model_id": "GPT2",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.967488",
+    "next_scan_allowed": "2025-11-21T14:51:42.967488",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/microsoft/GPT2"
+  },
+  "huggingface/flan-t5-large": {
+    "model_id": "flan-t5-large",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.970245",
+    "next_scan_allowed": "2025-11-21T14:51:42.970245",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/google/flan-t5-large"
+  },
+  "huggingface/DialoGPT-medium": {
+    "model_id": "DialoGPT-medium",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.977322",
+    "next_scan_allowed": "2025-11-21T14:51:42.977322",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/microsoft/DialoGPT-medium"
+  },
+  "huggingface/gpt-j-6b": {
+    "model_id": "gpt-j-6b",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.980983",
+    "next_scan_allowed": "2025-11-21T14:51:42.980983",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/EleutherAI/gpt-j-6b"
+  },
+  "huggingface/bloom": {
+    "model_id": "bloom",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.984232",
+    "next_scan_allowed": "2025-11-21T14:51:42.984232",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/bigscience/bloom"
+  },
+  "huggingface/phi-2": {
+    "model_id": "phi-2",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.989961",
+    "next_scan_allowed": "2025-11-21T14:51:42.989961",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/microsoft/phi-2"
+  },
+  "huggingface/Mistral-7B-Instruct-v0.2": {
+    "model_id": "Mistral-7B-Instruct-v0.2",
+    "provider": "huggingface",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.994090",
+    "next_scan_allowed": "2025-11-21T14:51:42.994090",
+    "scan_count": 4,
+    "failed_attempts": 0,
+    "source_url": "https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2"
+  },
+  "github/llama.cpp": {
+    "model_id": "llama.cpp",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.703863",
+    "next_scan_allowed": "2025-11-20T16:33:28.703863",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/ggerganov/llama.cpp"
+  },
+  "github/ollama": {
+    "model_id": "ollama",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.706714",
+    "next_scan_allowed": "2025-11-20T16:33:28.706714",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/Ollama/ollama"
+  },
+  "github/FastChat": {
+    "model_id": "FastChat",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.708463",
+    "next_scan_allowed": "2025-11-20T16:33:28.708463",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/lm-sys/FastChat"
+  },
+  "github/tiktoken": {
+    "model_id": "tiktoken",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.710790",
+    "next_scan_allowed": "2025-11-20T16:33:28.710790",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/openai/tiktoken"
+  },
+  "github/DeepSpeed": {
+    "model_id": "DeepSpeed",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.712561",
+    "next_scan_allowed": "2025-11-20T16:33:28.712561",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/microsoft/DeepSpeed"
+  },
+  "github/GPT-NeoX": {
+    "model_id": "GPT-NeoX",
+    "provider": "github",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:33:28.715752",
+    "next_scan_allowed": "2025-11-20T16:33:28.715752",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://github.com/EleutherAI/GPT-NeoX"
+  },
+  "openrouter/llama-3.2-3b-instruct": {
+    "model_id": "llama-3.2-3b-instruct",
+    "provider": "openrouter",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:42.997722",
+    "next_scan_allowed": "2025-11-21T14:51:42.997722",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://openrouter.ai/models/meta-llama/llama-3.2-3b-instruct"
+  },
+  "openrouter/wizardlm-2-8x22b": {
+    "model_id": "wizardlm-2-8x22b",
+    "provider": "openrouter",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.000865",
+    "next_scan_allowed": "2025-11-21T14:51:43.000865",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://openrouter.ai/models/microsoft/wizardlm-2-8x22b"
+  },
+  "openrouter/mistral-7b-instruct": {
+    "model_id": "mistral-7b-instruct",
+    "provider": "openrouter",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.004053",
+    "next_scan_allowed": "2025-11-21T14:51:43.004053",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://openrouter.ai/models/mistralai/mistral-7b-instruct"
+  },
+  "openrouter/claude-3-haiku": {
+    "model_id": "claude-3-haiku",
+    "provider": "openrouter",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.007709",
+    "next_scan_allowed": "2025-11-21T14:51:43.007709",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://openrouter.ai/models/anthropic/claude-3-haiku"
+  },
+  "openrouter/gemma-7b-it": {
+    "model_id": "gemma-7b-it",
+    "provider": "openrouter",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.016377",
+    "next_scan_allowed": "2025-11-21T14:51:43.016377",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://openrouter.ai/models/google/gemma-7b-it"
+  },
+  "groq/llama2-70b-4096": {
+    "model_id": "llama2-70b-4096",
+    "provider": "groq",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.683889",
+    "next_scan_allowed": "2025-11-20T16:35:25.683889",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://groq.com"
+  },
+  "groq/mixtral-8x7b-32768": {
+    "model_id": "mixtral-8x7b-32768",
+    "provider": "groq",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.707231",
+    "next_scan_allowed": "2025-11-20T16:35:25.707231",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://groq.com"
+  },
+  "groq/gemma-7b-it": {
+    "model_id": "gemma-7b-it",
+    "provider": "groq",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.710410",
+    "next_scan_allowed": "2025-11-20T16:35:25.710410",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://groq.com"
+  },
+  "together/llama-2-70b-chat": {
+    "model_id": "llama-2-70b-chat",
+    "provider": "together",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.019833",
+    "next_scan_allowed": "2025-11-21T14:51:43.019833",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://together.ai"
+  },
+  "together/llama-2-7b-32k-instruct": {
+    "model_id": "llama-2-7b-32k-instruct",
+    "provider": "together",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.024605",
+    "next_scan_allowed": "2025-11-21T14:51:43.024605",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://together.ai"
+  },
+  "together/CodeLlama-34b-Instruct": {
+    "model_id": "CodeLlama-34b-Instruct",
+    "provider": "together",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.030070",
+    "next_scan_allowed": "2025-11-21T14:51:43.030070",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://together.ai"
+  },
+  "together/llama-2-7b-chat": {
+    "model_id": "llama-2-7b-chat",
+    "provider": "together",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.035975",
+    "next_scan_allowed": "2025-11-21T14:51:43.035975",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://together.ai"
+  },
+  "replicate/llama-2-70b-chat": {
+    "model_id": "llama-2-70b-chat",
+    "provider": "replicate",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.039824",
+    "next_scan_allowed": "2025-11-21T14:51:43.039824",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://replicate.com"
+  },
+  "replicate/mistral-7b-instruct-v0.1": {
+    "model_id": "mistral-7b-instruct-v0.1",
+    "provider": "replicate",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.044391",
+    "next_scan_allowed": "2025-11-21T14:51:43.044391",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://replicate.com"
+  },
+  "replicate/llama-2-13b-chat": {
+    "model_id": "llama-2-13b-chat",
+    "provider": "replicate",
+    "is_free": true,
+    "last_scan": "2025-11-14T14:51:43.048742",
+    "next_scan_allowed": "2025-11-21T14:51:43.048742",
+    "scan_count": 3,
+    "failed_attempts": 0,
+    "source_url": "https://replicate.com"
+  },
+  "ollama/llama2": {
+    "model_id": "llama2",
+    "provider": "ollama",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.733955",
+    "next_scan_allowed": "2025-11-20T16:35:25.733955",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://ollama.ai"
+  },
+  "ollama/mistral": {
+    "model_id": "mistral",
+    "provider": "ollama",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.739747",
+    "next_scan_allowed": "2025-11-20T16:35:25.739747",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://ollama.ai"
+  },
+  "ollama/codellama": {
+    "model_id": "codellama",
+    "provider": "ollama",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.743142",
+    "next_scan_allowed": "2025-11-20T16:35:25.743142",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://ollama.ai"
+  },
+  "ollama/llama2:13b": {
+    "model_id": "llama2:13b",
+    "provider": "ollama",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.799645",
+    "next_scan_allowed": "2025-11-20T16:35:25.799645",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://ollama.ai"
+  },
+  "ollama/vicuna": {
+    "model_id": "vicuna",
+    "provider": "ollama",
+    "is_free": true,
+    "last_scan": "2025-11-13T16:35:25.808056",
+    "next_scan_allowed": "2025-11-20T16:35:25.808056",
+    "scan_count": 1,
+    "failed_attempts": 0,
+    "source_url": "https://ollama.ai"
+  }
+}
