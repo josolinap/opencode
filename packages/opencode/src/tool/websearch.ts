@@ -61,6 +61,7 @@ export const WebSearchTool = Tool.define("websearch", {
       .describe("Maximum characters for context string optimized for LLMs (default: 10000)"),
     bypassCache: z.boolean().optional().describe("Bypass web search cache and perform live search"),
     ttlMs: z.number().optional().describe("Cache TTL in milliseconds for results"),
+    topK: z.number().optional().describe("Limit number of results returned (top K)"),
     summarize: z.boolean().optional().describe("Summarize top results and include a short summary in the response"),
     summaryCount: z.number().optional().describe("Number of results to summarize (default: 3)"),
   }),
@@ -140,16 +141,33 @@ export const WebSearchTool = Tool.define("websearch", {
         if (line.startsWith("data: ")) {
           const data: McpSearchResponse = JSON.parse(line.substring(6))
           if (data.result && data.result.content && data.result.content.length > 0) {
-            const results = data.result.content.map((c) => c.text)
+            let results = data.result.content.map((c) => c.text)
+            // Optional topK cap
+            const topK =
+              (params.topK ?? results.length) > 0
+                ? Math.max(0, Math.min(params.topK ?? results.length, results.length))
+                : 0
+            let slicedResults = results
+            if (topK > 0 && topK < results.length) {
+              slicedResults = results.slice(0, topK)
+            }
+            if (params.dedupeResults) {
+              const seen = new Set<string>()
+              slicedResults = slicedResults.filter((r) => {
+                if (seen.has(r)) return false
+                seen.add(r)
+                return true
+              })
+            }
             const summarizeEnabled = params.summarize ?? true
             const summaryCount = params.summaryCount ?? 3
             const summaryText =
-              summarizeEnabled && results.length > 0
-                ? results.slice(0, Math.min(summaryCount, results.length)).join(" ")
+              summarizeEnabled && slicedResults.length > 0
+                ? slicedResults.slice(0, Math.min(summaryCount, slicedResults.length)).join(" ")
                 : ""
 
             const base = {
-              output: results[0] ?? "",
+              output: slicedResults[0] ?? "",
               title: `Web search: ${params.query}`,
               metadata: {},
             }
