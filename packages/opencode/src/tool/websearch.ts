@@ -138,9 +138,17 @@ export const WebSearchTool = Tool.define("websearch", {
         if (line.startsWith("data: ")) {
           const data: McpSearchResponse = JSON.parse(line.substring(6))
           if (data.result && data.result.content && data.result.content.length > 0) {
-            const results = data.result.content.map((c) => c.text)
+            let results = data.result.content.map((c) => c.text)
+            if (params.dedupeResults) {
+              const seen = new Set<string>()
+              results = results.filter((r) => {
+                if (seen.has(r)) return false
+                seen.add(r)
+                return true
+              })
+            }
             const base = {
-              output: results[0],
+              output: results[0] ?? "",
               title: `Web search: ${params.query}`,
               metadata: {},
             }

@@ -24,12 +24,37 @@ from framework_integrator import FrameworkIntegrator, TaskRequest
 from self_optimization import SelfOptimizationEngine
 import requests
 
+# Import resilience patterns
+try:
+    from resilience import (
+        with_circuit_breaker,
+        with_retry,
+        with_graceful_degradation,
+        resilience,
+    )
+
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    RESILIENCE_AVAILABLE = False
+    logger.warning("Resilience patterns not available")
+
 logger = logging.getLogger(__name__)
+
+# Import enhanced LLM client
+try:
+    from enhanced_llm_client import EnhancedLLMClient
+
+    ENHANCED_LLM_AVAILABLE = True
+except ImportError:
+    ENHANCED_LLM_AVAILABLE = False
+    logger.warning("Enhanced LLM client not available, using basic client")
+
 
 @dataclass
 class Message:
     role: str
     content: str
+
 
 class ConversationHistory:
     def __init__(self, max_messages: int = 20):
@@ -40,7 +65,7 @@ class ConversationHistory:
         self._messages.append(Message(role=role, content=content))
         # Limit the history size
         if len(self._messages) > self.max_messages:
-            self._messages = self._messages[-self.max_messages:]
+            self._messages = self._messages[-self.max_messages :]
 
     def to_list(self) -> List[Dict[str, str]]:
         return [{"role": m.role, "content": m.content} for m in self._messages]
@@ -48,12 +73,39 @@ class ConversationHistory:
     def clear(self):
         self._messages = []
 
+
 class LLMClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
+
+        # Use enhanced client if available, otherwise fallback to basic
+        if ENHANCED_LLM_AVAILABLE:
+            try:
+                self.enhanced_client = EnhancedLLMClient(cfg)
+                self.use_enhanced = True
+                logger.info("Using enhanced LLM client with multi-provider support")
+            except Exception as e:
+                logger.warning(
+                    f"Enhanced client failed to initialize: {e}, using basic client"
+                )
+                self.use_enhanced = False
+                self._init_basic_client()
+        else:
+            self.use_enhanced = False
+            self._init_basic_client()
+
+    def _init_basic_client(self):
+        """Initialize basic client for Ollama only"""
         self.session = requests.Session()
 
     def chat(self, messages: List[Dict[str, str]], timeout: int = 15) -> str:
+        if self.use_enhanced:
+            return self.enhanced_client.chat(messages, timeout)
+        else:
+            return self._basic_chat(messages, timeout)
+
+    def _basic_chat(self, messages: List[Dict[str, str]], timeout: int = 15) -> str:
+        """Basic Ollama-only chat for fallback"""
         provider = self.cfg.provider.lower()
         if provider == "ollama":
             # Ollama local API: POST /api/chat
@@ -75,8 +127,14 @@ class LLMClient:
         # Add more providers here (Together.ai, HF) if needed
         return "[Neo Error] Provider not supported or missing integration."
 
+
 class Brain:
-    def __init__(self, config: Config, skills: SkillRegistry, llm_client: Optional[LLMClient]=None):
+    def __init__(
+        self,
+        config: Config,
+        skills: SkillRegistry,
+        llm_client: Optional[LLMClient] = None,
+    ):
         self.cfg = config
         self.skills = skills
         self.llm = llm_client or LLMClient(config)
@@ -86,7 +144,7 @@ class Brain:
         self.self_optimization = SelfOptimizationEngine(self)
         self.available_models = self._load_available_models()
         self.current_model = self._select_best_model()
-        
+
         # Phase 2 Advanced Capabilities
         self._initialize_phase2_systems()
 
@@ -96,27 +154,30 @@ class Brain:
             # Import Phase 2 systems
             from self_evolving_skills import GeneticSkillEvolver, SkillEvolutionManager
             from hierarchical_agents import MetaAgent, HierarchicalAgentManager
-            from advanced_reasoning import TreeOfThoughtsReasoner, AdvancedReasoningManager
-            
+            from advanced_reasoning import (
+                TreeOfThoughtsReasoner,
+                AdvancedReasoningManager,
+            )
+
             # Initialize Self-Evolving Skills
             self.skill_evolver = GeneticSkillEvolver(population_size=20)
             self.skill_evolution_manager = SkillEvolutionManager()
-            
+
             # Initialize Hierarchical Agents
             self.hierarchical_manager = HierarchicalAgentManager()
             agent_configs = [
                 {"id": "exec_001", "name": "Executive Agent", "level": "executive"},
-                {"id": "worker_001", "name": "Worker Agent", "level": "worker"}
+                {"id": "worker_001", "name": "Worker Agent", "level": "worker"},
             ]
             self.hierarchical_manager.initialize_hierarchy(agent_configs)
-            
+
             # Initialize Advanced Reasoning
             self.advanced_reasoning_manager = AdvancedReasoningManager()
-            
-            logger.info("✅ Phase 2 systems initialized successfully")
-            
+
+            logger.info("Phase 2 systems initialized successfully")
+
         except Exception as e:
-            logger.warning(f"⚠️ Phase 2 systems initialization failed: {e}")
+            logger.warning(f"Phase 2 systems initialization failed: {e}")
             # Fallback to basic functionality
             self.skill_evolver = None
             self.skill_evolution_manager = None
@@ -140,11 +201,16 @@ class Brain:
         # Original skill routing
         if any(word in lowered for word in ["train", "model", "simulate", "recommend"]):
             return {"intent": "skill", "skill": "ml_training"}
-        if any(word in lowered for word in ["sentiment", "analyze", "moderate", "toxic"]):
+        if any(
+            word in lowered for word in ["sentiment", "analyze", "moderate", "toxic"]
+        ):
             return {"intent": "skill", "skill": "text_analysis"}
         if any(word in lowered for word in ["csv", "json", "data", "summary", "stats"]):
             return {"intent": "skill", "skill": "data_inspector"}
-        if any(word in lowered for word in ["code", "python", "generate", "snippet", "explain"]):
+        if any(
+            word in lowered
+            for word in ["code", "python", "generate", "snippet", "explain"]
+        ):
             return {"intent": "skill", "skill": "code_generation"}
         if any(word in lowered for word in ["file", "read", "directory", "folder"]):
             return {"intent": "skill", "skill": "file_manager"}
@@ -152,13 +218,39 @@ class Brain:
             return {"intent": "skill", "skill": "web_search"}
 
         # Phase 2 Advanced Capabilities Detection
-        if any(word in lowered for word in ["complex reasoning", "analyze deeply", "think through", "deep analysis"]):
+        if any(
+            word in lowered
+            for word in [
+                "complex reasoning",
+                "analyze deeply",
+                "think through",
+                "deep analysis",
+            ]
+        ):
             return {"intent": "advanced_reasoning"}
-        
-        if any(word in lowered for word in ["coordinate", "manage", "organize", "delegate", "team coordination"]):
+
+        if any(
+            word in lowered
+            for word in [
+                "coordinate",
+                "manage",
+                "organize",
+                "delegate",
+                "team coordination",
+            ]
+        ):
             return {"intent": "hierarchical_coordination"}
-        
-        if any(word in lowered for word in ["evolve", "improve skills", "adapt", "optimize abilities", "skill evolution"]):
+
+        if any(
+            word in lowered
+            for word in [
+                "evolve",
+                "improve skills",
+                "adapt",
+                "optimize abilities",
+                "skill evolution",
+            ]
+        ):
             return {"intent": "skill_evolution"}
 
         return {"intent": "chat"}
@@ -176,7 +268,7 @@ class Brain:
                     "example": skill.example_usage,
                 },
                 "output": result,
-                "reasoning": f"Chose skill '{skill_name}' due to detected keywords."
+                "reasoning": f"Chose skill '{skill_name}' due to detected keywords.",
             }
         except Exception as e:
             logger.error(f"Skill routing failed: {e}")
@@ -185,7 +277,7 @@ class Brain:
     def send_message(self, text: str) -> str:
         self.history.add("user", text)
         intent = self.parse_intent(text)
-        
+
         # Debug: Log detected intent
         logger.info(f"Detected intent: {intent}")
 
@@ -206,10 +298,13 @@ class Brain:
         # Handle Phase 2 Advanced Capabilities
         if intent["intent"] == "advanced_reasoning" and self.advanced_reasoning_manager:
             return self._handle_advanced_reasoning(text)
-        
-        if intent["intent"] == "hierarchical_coordination" and self.hierarchical_manager:
+
+        if (
+            intent["intent"] == "hierarchical_coordination"
+            and self.hierarchical_manager
+        ):
             return self._handle_hierarchical_coordination(text)
-        
+
         if intent["intent"] == "skill_evolution" and self.skill_evolver:
             return self._handle_skill_evolution(text)
 
@@ -220,27 +315,37 @@ class Brain:
         """Handle advanced reasoning requests using Tree of Thoughts"""
         try:
             start_time = time.time()
-            
+
             # Extract problem from text
-            problem = text.replace("reasoning", "").replace("analyze deeply", "").replace("think through", "").strip()
+            problem = (
+                text.replace("reasoning", "")
+                .replace("analyze deeply", "")
+                .replace("think through", "")
+                .strip()
+            )
             if not problem:
                 problem = text
-            
+
             # Use advanced reasoning
-            result = self.advanced_reasoning_manager.reason(problem, {"request_type": "user_query"})
+            result = self.advanced_reasoning_manager.reason(
+                problem, {"request_type": "user_query"}
+            )
             response_time = time.time() - start_time
-            
+
             # Record usage
             self.record_model_usage("advanced_reasoning", True, response_time)
-            
+
             response = f"[🧠 Advanced Reasoning]\n"
             response += f"Confidence: {result.get('confidence', 0):.3f}\n"
             response += f"Thoughts Explored: {result.get('thoughts_count', 0)}\n\n"
             response += f"[Reasoning Result]\n{result.get('conclusion', 'No conclusion generated')}"
-            
-            self.history.add("assistant", f"[Advanced Reasoning] {result.get('conclusion', '')[:100]}...")
+
+            self.history.add(
+                "assistant",
+                f"[Advanced Reasoning] {result.get('conclusion', '')[:100]}...",
+            )
             return response
-            
+
         except Exception as e:
             logger.error(f"Advanced reasoning failed: {e}")
             return f"[❌ Advanced Reasoning Error] {str(e)}"
@@ -249,25 +354,32 @@ class Brain:
         """Handle hierarchical coordination requests"""
         try:
             start_time = time.time()
-            
+
             # Extract objectives from text
             objectives = [text]  # Simple extraction for now
-            
+
             # Use hierarchical coordination
             result = self.hierarchical_manager.coordinate_system(objectives)
             response_time = time.time() - start_time
-            
+
             # Record usage
             self.record_model_usage("hierarchical_coordination", True, response_time)
-            
+
             response = f"[🏗️ Hierarchical Coordination]\n"
             response += f"Status: {result.get('status', 'unknown')}\n"
-            response += f"Agents Involved: {len(result.get('agents_coordinated', []))}\n\n"
-            response += f"[Coordination Result]\n{result.get('plan', 'No plan generated')}"
-            
-            self.history.add("assistant", f"[Hierarchical Coordination] {result.get('status', 'unknown')}")
+            response += (
+                f"Agents Involved: {len(result.get('agents_coordinated', []))}\n\n"
+            )
+            response += (
+                f"[Coordination Result]\n{result.get('plan', 'No plan generated')}"
+            )
+
+            self.history.add(
+                "assistant",
+                f"[Hierarchical Coordination] {result.get('status', 'unknown')}",
+            )
             return response
-            
+
         except Exception as e:
             logger.error(f"Hierarchical coordination failed: {e}")
             return f"[❌ Hierarchical Coordination Error] {str(e)}"
@@ -276,47 +388,66 @@ class Brain:
         """Handle skill evolution requests"""
         try:
             start_time = time.time()
-            
+
             # Initialize skills if needed
             if not self.skill_evolution_manager.evolution_active:
                 initial_skills = [
-                    {"id": "adapt_001", "name": "Adaptive Analysis", "type": "analytical", "capabilities": ["data_analysis", "pattern_recognition"]},
-                    {"id": "adapt_002", "name": "Creative Problem Solving", "type": "creative", "capabilities": ["innovation", "brainstorming"]}
+                    {
+                        "id": "adapt_001",
+                        "name": "Adaptive Analysis",
+                        "type": "analytical",
+                        "capabilities": ["data_analysis", "pattern_recognition"],
+                    },
+                    {
+                        "id": "adapt_002",
+                        "name": "Creative Problem Solving",
+                        "type": "creative",
+                        "capabilities": ["innovation", "brainstorming"],
+                    },
                 ]
                 self.skill_evolution_manager.initialize_skills(initial_skills)
-            
+
             # Trigger evolution
             self.skill_evolution_manager.trigger_evolution()
             response_time = time.time() - start_time
-            
+
             # Record usage
             self.record_model_usage("skill_evolution", True, response_time)
-            
+
             # Get evolution status
             evolution_status = self.skill_evolution_manager.get_evolution_status()
-            
+
             response = f"[🧬 Skill Evolution]\n"
             response += f"Generation: {evolution_status.get('current_generation', 0)}\n"
-            response += f"Population Size: {evolution_status.get('population_size', 0)}\n"
+            response += (
+                f"Population Size: {evolution_status.get('population_size', 0)}\n"
+            )
             response += f"Evolution Active: {evolution_status.get('evolution_active', False)}\n\n"
             response += f"[Evolution Status]\nEvolution cycle completed successfully"
-            
-            self.history.add("assistant", f"[Skill Evolution] Gen {evolution_result.get('generation', 0)}")
+
+            self.history.add(
+                "assistant",
+                f"[Skill Evolution] Gen {evolution_result.get('generation', 0)}",
+            )
             return response
-            
+
         except Exception as e:
             logger.error(f"Skill evolution failed: {e}")
             return f"[❌ Skill Evolution Error] {str(e)}"
 
     def _send_chat_with_fallback(self, user_message: str) -> str:
         """Send chat message with automatic model fallback"""
-        max_retry_attempts = len(self.available_models) + 1  # Try all models plus original
+        max_retry_attempts = (
+            len(self.available_models) + 1
+        )  # Try all models plus original
         attempted_models = set()
 
         for retry_attempt in range(max_retry_attempts):
             try:
                 # Try current model first
-                active_model = self.current_model or f"{self.cfg.provider}/{self.cfg.model_name}"
+                active_model = (
+                    self.current_model or f"{self.cfg.provider}/{self.cfg.model_name}"
+                )
 
                 if active_model not in attempted_models:
                     attempted_models.add(active_model)
@@ -333,11 +464,15 @@ class Brain:
                         return llm_response
 
                     # Record failed usage
-                    self.record_model_usage("chat", False, response_duration, error_message=llm_response)
+                    self.record_model_usage(
+                        "chat", False, response_duration, error_message=llm_response
+                    )
                     logger.warning(f"Model {active_model} failed: {llm_response}")
 
                 # Try switching to another available model
-                available_models = [m for m in self.list_available_models() if m not in attempted_models]
+                available_models = [
+                    m for m in self.list_available_models() if m not in attempted_models
+                ]
                 if available_models:
                     fallback_model = available_models[0]  # Try next available model
                     if self._switch_to_model_config(fallback_model):
@@ -351,11 +486,18 @@ class Brain:
                         if not llm_response.startswith("[Neo Error]"):
                             self.history.add("assistant", llm_response)
                             # Record successful usage
-                            self.record_model_usage("chat", True, fallback_response_time)
+                            self.record_model_usage(
+                                "chat", True, fallback_response_time
+                            )
                             return llm_response
 
                         # Record failed usage
-                        self.record_model_usage("chat", False, fallback_response_time, error_message=llm_response)
+                        self.record_model_usage(
+                            "chat",
+                            False,
+                            fallback_response_time,
+                            error_message=llm_response,
+                        )
                         logger.warning(f"Fallback model {fallback_model} also failed")
 
             except Exception as e:
@@ -372,8 +514,12 @@ class Brain:
                 # Update config temporarily
                 self.cfg.provider = model_info["provider"]
                 self.cfg.model_name = model_info["model"]
-                self.cfg.api_endpoint = model_info.get("endpoint", self.cfg.api_endpoint)
-                self.cfg.max_tokens = model_info.get("context_length", self.cfg.max_tokens)
+                self.cfg.api_endpoint = model_info.get(
+                    "endpoint", self.cfg.api_endpoint
+                )
+                self.cfg.max_tokens = model_info.get(
+                    "context_length", self.cfg.max_tokens
+                )
 
                 # Recreate LLM client with new config
                 self.llm = LLMClient(self.cfg)
@@ -405,7 +551,9 @@ class Brain:
             fallback += "- Web search guidance\n"
             fallback += "- Advanced reasoning\n"
 
-        fallback += "\nTry asking about one of these areas, or check model availability."
+        fallback += (
+            "\nTry asking about one of these areas, or check model availability."
+        )
 
         # Add model status info
         if self.available_models:
@@ -417,8 +565,14 @@ class Brain:
     def clear_history(self):
         self.history.clear()
 
-    def record_model_usage(self, task_type: str, success: bool, response_time: float,
-                          token_count: Optional[int] = None, error_message: str = ""):
+    def record_model_usage(
+        self,
+        task_type: str,
+        success: bool,
+        response_time: float,
+        token_count: Optional[int] = None,
+        error_message: str = "",
+    ):
         """Record model usage for analytics"""
         if self.current_model:
             self.analytics.record_usage(
@@ -427,11 +581,17 @@ class Brain:
                 success=success,
                 response_time=response_time,
                 token_count=token_count,
-                error_message=error_message
+                error_message=error_message,
             )
 
-    def execute_framework_task(self, framework: str, task_type: str, parameters: Dict[str, Any],
-                              models: Optional[List[str]] = None, parallel: bool = False) -> Dict[str, Any]:
+    def execute_framework_task(
+        self,
+        framework: str,
+        task_type: str,
+        parameters: Dict[str, Any],
+        models: Optional[List[str]] = None,
+        parallel: bool = False,
+    ) -> Dict[str, Any]:
         """Execute a task using an external framework"""
         try:
             # Initialize framework if not already done
@@ -441,7 +601,7 @@ class Brain:
                         "success": False,
                         "error": f"Failed to initialize framework {framework}",
                         "framework": framework,
-                        "task_type": task_type
+                        "task_type": task_type,
                     }
 
             # Create task request
@@ -451,7 +611,7 @@ class Brain:
                 parameters=parameters,
                 models=models or [self.current_model] if self.current_model else [],
                 parallel=parallel,
-                timeout=30
+                timeout=30,
             )
 
             # Execute task
@@ -462,7 +622,7 @@ class Brain:
                 task_type=f"framework_{framework}_{task_type}",
                 success=result.success,
                 response_time=result.execution_time,
-                error_message=result.error_message if not result.success else ""
+                error_message=result.error_message if not result.success else "",
             )
 
             return {
@@ -472,7 +632,7 @@ class Brain:
                 "error": result.error_message,
                 "framework": framework,
                 "task_type": task_type,
-                "metadata": result.metadata
+                "metadata": result.metadata,
             }
 
         except Exception as e:
@@ -481,7 +641,7 @@ class Brain:
                 "success": False,
                 "error": str(e),
                 "framework": framework,
-                "task_type": task_type
+                "task_type": task_type,
             }
 
     def get_available_frameworks(self) -> Dict[str, Dict[str, Any]]:
@@ -500,7 +660,7 @@ class Brain:
             # Load from opencode.json
             config_path = self._find_config_path()
             if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     config = json.load(f)
 
                 models_config = config.get("models", {})
@@ -524,7 +684,7 @@ class Brain:
         try:
             config_path = self._find_config_path()
             if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     config = json.load(f)
                 return config.get("model_health", {})
         except Exception as e:
@@ -534,12 +694,20 @@ class Brain:
     def get_unhealthy_models(self) -> List[str]:
         """Get list of unhealthy model IDs"""
         health_status = self.get_model_health_status()
-        return [model_id for model_id, status in health_status.items() if not status.get("is_healthy", True)]
+        return [
+            model_id
+            for model_id, status in health_status.items()
+            if not status.get("is_healthy", True)
+        ]
 
     def get_healthy_models(self) -> List[str]:
         """Get list of healthy model IDs"""
         health_status = self.get_model_health_status()
-        return [model_id for model_id, status in health_status.items() if status.get("is_healthy", True)]
+        return [
+            model_id
+            for model_id, status in health_status.items()
+            if status.get("is_healthy", True)
+        ]
 
     def _find_config_path(self) -> str:
         """Find the opencode.json config file"""
@@ -605,7 +773,9 @@ class Brain:
         """List all available model IDs"""
         return list(self.available_models.keys())
 
-    def auto_switch_model(self, required_capabilities: Optional[List[str]] = None) -> bool:
+    def auto_switch_model(
+        self, required_capabilities: Optional[List[str]] = None
+    ) -> bool:
         """Automatically switch to the best model for required capabilities"""
         if required_capabilities is None:
             required_capabilities = ["reasoning"]
@@ -655,10 +825,15 @@ class Brain:
         try:
             actions = self.self_optimization.optimize_self()
             if actions:
-                return f"Optimization completed. Executed {len(actions)} actions:\n" + "\n".join([
-                    f"- {action.action_type} on {action.target}: {action.reasoning}"
-                    for action in actions
-                ])
+                return (
+                    f"Optimization completed. Executed {len(actions)} actions:\n"
+                    + "\n".join(
+                        [
+                            f"- {action.action_type} on {action.target}: {action.reasoning}"
+                            for action in actions
+                        ]
+                    )
+                )
             else:
                 return "No optimization actions were needed or executed."
         except Exception as e:
@@ -671,7 +846,9 @@ class Brain:
             status = "Active" if self.self_optimization.continuous_mode else "Inactive"
             last_analysis = "None"
             if self.self_optimization.analysis_history:
-                last_analysis = self.self_optimization.analysis_history[-1].timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                last_analysis = self.self_optimization.analysis_history[
+                    -1
+                ].timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
             return f"""Self-Optimization Status:
 - Continuous Mode: {status}

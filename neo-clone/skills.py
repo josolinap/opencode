@@ -18,10 +18,12 @@ except ImportError:
             self.name = "system_healer"
             self.description = "System healer (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "System healer skill not available")
+
 
 # Import FreeModelScannerSkill
 try:
@@ -33,100 +35,150 @@ except ImportError:
             self.name = "free_model_scanner"
             self.description = "Free model scanner (unavailable)"
             self.example = ""
-        
+
         def scan_free_models(self, force_refresh=False):
-            return {"success": False, "error": "Free model scanner not available", "models": []}
+            return {
+                "success": False,
+                "error": "Free model scanner not available",
+                "models": [],
+            }
+
+
+# Import Code Generation Skill (deferred to avoid circular import)
+def get_code_generation_skill():
+    try:
+        from code_generation import CodeGenerationSkill
+
+        return CodeGenerationSkill()
+    except ImportError:
+
+        class CodeGenerationSkillFallback:
+            def __init__(self):
+                self.name = "code_generation"
+                self.description = "Code generation (unavailable)"
+                self.example = ""
+
+            def execute(self, params):
+                return SkillResult(False, "Code generation skill not available")
+
+        return CodeGenerationSkillFallback()
+
 
 # Import integrated backup skills
 try:
-    from advanced_pentesting_reverse_engineering import AdvancedPentestingReverseEngineeringSkill
+    from advanced_pentesting_reverse_engineering import (
+        AdvancedPentestingReverseEngineeringSkill,
+    )
 except ImportError:
+
     class AdvancedPentestingReverseEngineeringSkill:
         def __init__(self):
             self.name = "advanced_pentesting_reverse_engineering"
-            self.description = "Advanced pentesting and reverse engineering (unavailable)"
+            self.description = (
+                "Advanced pentesting and reverse engineering (unavailable)"
+            )
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Advanced pentesting skill not available")
+
 
 try:
     from security_evolution_engine import SecurityEvolutionEngineSkill
 except ImportError:
+
     class SecurityEvolutionEngineSkill:
         def __init__(self):
             self.name = "security_evolution_engine"
             self.description = "Security evolution engine (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Security evolution engine skill not available")
 
+
 try:
-    from autonomous_reasoning_skill import AutonomousReasoningSkill, SkillRoutingOptimizer, CrossSkillDependencyAnalyzer
+    from autonomous_reasoning_skill import (
+        AutonomousReasoningSkill,
+        SkillRoutingOptimizer,
+        CrossSkillDependencyAnalyzer,
+    )
 except ImportError:
+
     class AutonomousReasoningSkill:
         def __init__(self):
             self.name = "autonomous_reasoning"
             self.description = "Autonomous reasoning (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Autonomous reasoning skill not available")
-    
+
     class SkillRoutingOptimizer:
         def __init__(self):
             self.name = "skill_routing_optimizer"
             self.description = "Skill routing optimizer (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Skill routing optimizer not available")
-    
+
     class CrossSkillDependencyAnalyzer:
         def __init__(self):
             self.name = "cross_skill_dependency_analyzer"
             self.description = "Cross-skill dependency analyzer (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Cross-skill dependency analyzer not available")
+
 
 try:
     from federated_learning import FederatedLearningSkill
 except ImportError:
+
     class FederatedLearningSkill:
         def __init__(self):
             self.name = "federated_learning"
             self.description = "Federated learning (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "Federated learning skill not available")
+
 
 try:
     from ml_workflow_generator import MLWorkflowGenerator
 except ImportError:
+
     class MLWorkflowGenerator:
         def __init__(self):
             self.name = "ml_workflow_generator"
             self.description = "ML workflow generator (unavailable)"
             self.example = ""
-        
+
         def execute(self, params):
             from skills_fixed import SkillResult
+
             return SkillResult(False, "ML workflow generator not available")
 
 
 @dataclass
 class SkillResult:
     """Result of skill execution."""
+
     success: bool
     output: str
     data: Optional[Dict[str, Any]] = None
@@ -134,12 +186,12 @@ class SkillResult:
 
 class BaseSkill(ABC):
     """Base class for all skills in the neo-clone system."""
-    
+
     def __init__(self, name: str, description: str, example: str = ""):
         self.name = name
         self.description = description
         self.example = example
-    
+
     @abstractmethod
     def execute(self, params: Dict[str, Any]) -> SkillResult:
         """Execute the skill with given parameters."""
@@ -148,26 +200,31 @@ class BaseSkill(ABC):
 
 class SkillRegistry:
     """Registry for managing available skills."""
-    
+
     def __init__(self):
-        self.skills = {}
+        self._skills = {}
         self._register_default_skills()
-    
+
     def register_skill(self, skill: BaseSkill):
         """Register a new skill."""
-        self.skills[skill.name] = skill
-    
+        self._skills[skill.name] = skill
+
     def get_skill(self, name: str) -> Optional[BaseSkill]:
         """Get a skill by name."""
-        return self.skills.get(name)
-    
+        return self._skills.get(name)
+
     def list_skills(self) -> List[str]:
         """List all available skill names."""
-        return list(self.skills.keys())
-    
+        return list(self._skills.keys())
+
+    def get(self, name: str) -> Optional[BaseSkill]:
+        """Alias for get_skill to match the interface used in main.py"""
+        return self.get_skill(name)
+
     def _register_default_skills(self):
         """Register default skills."""
         default_skills = [
+            get_code_generation_skill(),
             TextAnalysisSkill(),
             DataInspectorSkill(),
             MLTrainingSkill(),
@@ -187,9 +244,9 @@ class SkillRegistry:
             SkillRoutingOptimizer(),
             CrossSkillDependencyAnalyzer(),
             FederatedLearningSkill(),
-            MLWorkflowGenerator()
+            MLWorkflowGenerator(),
         ]
-        
+
         for skill in default_skills:
             self.register_skill(skill)
 
@@ -201,14 +258,30 @@ class TextAnalysisSkill(BaseSkill):
         super().__init__(
             "text_analysis",
             "Performs sentiment analysis and text moderation",
-            "Analyze the sentiment of this text: 'I love this product!'"
+            "Analyze the sentiment of this text: 'I love this product!'",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
         text = params.get("text", "")
         # Simple sentiment analysis
-        positive_words = ["good", "great", "excellent", "amazing", "love", "like", "best"]
-        negative_words = ["bad", "terrible", "awful", "hate", "worst", "dislike", "poor"]
+        positive_words = [
+            "good",
+            "great",
+            "excellent",
+            "amazing",
+            "love",
+            "like",
+            "best",
+        ]
+        negative_words = [
+            "bad",
+            "terrible",
+            "awful",
+            "hate",
+            "worst",
+            "dislike",
+            "poor",
+        ]
 
         text_lower = text.lower()
         positive_count = sum(1 for word in positive_words if word in text_lower)
@@ -236,7 +309,7 @@ class DataInspectorSkill(BaseSkill):
         super().__init__(
             "data_inspector",
             "Analyzes CSV/JSON data and provides summaries",
-            "Analyze this CSV data and provide summary statistics"
+            "Analyze this CSV data and provide summary statistics",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -257,7 +330,7 @@ class MLTrainingSkill(BaseSkill):
         super().__init__(
             "ml_training",
             "Provides ML model training guidance and recommendations",
-            "Guide me through training a classification model"
+            "Guide me through training a classification model",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -279,7 +352,7 @@ class FileManagerSkill(BaseSkill):
         super().__init__(
             "file_manager",
             "Manages file operations and directory navigation",
-            "Read the contents of a file and analyze it"
+            "Read the contents of a file and analyze it",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -300,7 +373,7 @@ class WebSearchSkill(BaseSkill):
         super().__init__(
             "web_search",
             "Performs web searches and retrieves information",
-            "Search for information about machine learning best practices"
+            "Search for information about machine learning best practices",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -320,7 +393,7 @@ class MiniMaxAgentSkill(BaseSkill):
         super().__init__(
             "minimax_agent",
             "Advanced reasoning and decision-making with MiniMax algorithm",
-            "Analyze this complex decision problem using minimax reasoning"
+            "Analyze this complex decision problem using minimax reasoning",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -341,7 +414,7 @@ class ConstitutionSkill(BaseSkill):
         super().__init__(
             "constitution",
             "Applies constitutional principles for ethical AI behavior",
-            "Evaluate this response for ethical considerations"
+            "Evaluate this response for ethical considerations",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -362,7 +435,7 @@ class SpecificationSkill(BaseSkill):
         super().__init__(
             "specification",
             "Creates detailed technical specifications and requirements",
-            "Create a specification for a web application"
+            "Create a specification for a web application",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -383,7 +456,7 @@ class PlanningSkill(BaseSkill):
         super().__init__(
             "planning",
             "Creates strategic plans and project roadmaps",
-            "Create a project plan for developing a mobile app"
+            "Create a project plan for developing a mobile app",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -404,7 +477,7 @@ class TaskBreakdownSkill(BaseSkill):
         super().__init__(
             "task_breakdown",
             "Breaks down complex tasks into manageable steps",
-            "Break down the process of building a machine learning pipeline"
+            "Break down the process of building a machine learning pipeline",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -425,7 +498,7 @@ class ImplementationSkill(BaseSkill):
         super().__init__(
             "implementation",
             "Implements code solutions and development tasks",
-            "Implement a REST API for user management"
+            "Implement a REST API for user management",
         )
 
     def execute(self, params: Dict[str, Any]) -> SkillResult:
@@ -446,7 +519,7 @@ class FreeModelScannerSkill(BaseSkill):
         super().__init__(
             "free_model_scanner",
             "Scans for and manages free AI models for OpenCode integration",
-            "Scan for available free models and their capabilities"
+            "Scan for available free models and their capabilities",
         )
         self.scanner = FreeModelScanner()
 
@@ -454,47 +527,55 @@ class FreeModelScannerSkill(BaseSkill):
         try:
             action = params.get("action", "scan")
             force_refresh = params.get("force_refresh", False)
-            
+
             if action == "scan":
                 result = self.scanner.scan_free_models(force_refresh)
-                
+
                 if result.get("success"):
                     output = "[FREE MODEL SCANNER] Results:\n"
                     output += f"Found {result['total_found']} free models\n"
                     output += f"Scan time: {result['scan_time']}\n\n"
-                    
+
                     output += "Top Models:\n"
                     for i, model in enumerate(result["models"][:5], 1):
                         output += f"{i}. {model['provider']}/{model['model']} - Score: {model['integration_score']}%\n"
                         output += f"   Capabilities: {', '.join(model.get('recommended_uses', [])[:3])}\n"
-                    
+
                     recs = result.get("recommendations", {})
                     if recs.get("primary_recommendation"):
                         primary = recs["primary_recommendation"]
                         output += f"\nPrimary Recommendation: {primary['model']}\n"
                         output += f"Reason: {primary['reason']}\n"
-                    
+
                     return SkillResult(success=True, output=output)
                 else:
-                    return SkillResult(success=False, output=f"Scan failed: {result.get('error')}")
-            
+                    return SkillResult(
+                        success=False, output=f"Scan failed: {result.get('error')}"
+                    )
+
             elif action == "monitor":
                 result = self.scanner.monitor_for_new_models()
-                
+
                 if result.get("has_changes"):
-                    output = f"[NEW] {len(result.get('new_models', []))} new models found!\n"
+                    output = (
+                        f"[NEW] {len(result.get('new_models', []))} new models found!\n"
+                    )
                     for model in result.get("new_models", []):
                         output += f"  + {model['provider']}/{model['model']}\n"
                 else:
                     output = "[INFO] No new free models found\n"
-                
+
                 return SkillResult(success=True, output=output)
-            
+
             else:
-                return SkillResult(success=False, output="Unknown action. Use 'scan' or 'monitor'")
-                
+                return SkillResult(
+                    success=False, output="Unknown action. Use 'scan' or 'monitor'"
+                )
+
         except Exception as e:
-            return SkillResult(success=False, output=f"Free model scanner error: {str(e)}")
+            return SkillResult(
+                success=False, output=f"Free model scanner error: {str(e)}"
+            )
 
 
 # Skill Registry

@@ -3,7 +3,34 @@ Code Generation Skill for Neo-Clone
 Advanced code generation with OpenCode integration for creating complex AI systems.
 """
 
-from skills import BaseSkill, SkillResult
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class SkillResult:
+    """Result of skill execution."""
+
+    success: bool
+    output: str
+    data: Optional[Dict[str, Any]] = None
+
+
+class BaseSkill(ABC):
+    """Base class for all skills in the neo-clone system."""
+
+    def __init__(self, name: str, description: str, example: str = ""):
+        self.name = name
+        self.description = description
+        self.example = example
+
+    @abstractmethod
+    def execute(self, params: Dict[str, Any]) -> SkillResult:
+        """Execute the skill with given parameters."""
+        pass
+
+
 from collections import OrderedDict
 from functools import lru_cache
 import hashlib
@@ -12,13 +39,13 @@ import re
 
 logger = logging.getLogger(__name__)
 
-class CodeGenerationSkill(BaseSkill):
 
+class CodeGenerationSkill(BaseSkill):
     def __init__(self):
         super().__init__(
-            name='code_generation',
-            description='Advanced code generation with OpenCode integration for creating complex AI systems.',
-            example='Generate an autonomous intelligence system with self-learning capabilities.'
+            name="code_generation",
+            description="Advanced code generation with OpenCode integration for creating complex AI systems.",
+            example="Generate an autonomous intelligence system with self-learning capabilities.",
         )
         self._cache = OrderedDict()
         self._max_cache_size = 100
@@ -26,42 +53,46 @@ class CodeGenerationSkill(BaseSkill):
     @property
     def parameters(self):
         return {
-            'prompt': 'string - The code generation request',
-            'language': 'string - Programming language (default: python). Supported: python, javascript, typescript',
-            'style': 'string - Code style (default: professional)',
-            'include_comments': 'boolean - Include comments (default: true)',
-            'use_guidance': 'boolean - Use constrained generation with Guidance (default: true)'
+            "prompt": "string - The code generation request",
+            "language": "string - Programming language (default: python). Supported: python, javascript, typescript",
+            "style": "string - Code style (default: professional)",
+            "include_comments": "boolean - Include comments (default: true)",
+            "use_guidance": "boolean - Use constrained generation with Guidance (default: true)",
         }
 
     def execute(self, params):
         """Execute code generation with given parameters"""
         try:
-            prompt = params.get('prompt', 'Create a simple Python function')
-            language = params.get('language', 'python')
-            style = params.get('style', 'professional')
-            include_comments = params.get('include_comments', True)
-            use_guidance = params.get('use_guidance', True)
+            prompt = params.get("prompt", "Create a simple Python function")
+            language = params.get("language", "python")
+            style = params.get("style", "professional")
+            include_comments = params.get("include_comments", True)
+            use_guidance = params.get("use_guidance", True)
 
             # Generate cache key
-            cache_key = hashlib.md5(f'{prompt}_{language}_{style}_{include_comments}_{use_guidance}'.encode()).hexdigest()
-            
+            cache_key = hashlib.md5(
+                f"{prompt}_{language}_{style}_{include_comments}_{use_guidance}".encode()
+            ).hexdigest()
+
             # Check cache first
             if cache_key in self._cache:
                 self._cache.move_to_end(cache_key)
                 cached_result = self._cache[cache_key]
-                cached_result['cached'] = True
-                return SkillResult(True, cached_result.get('output', ''), cached_result)
+                cached_result["cached"] = True
+                return SkillResult(True, cached_result.get("output", ""), cached_result)
 
             # Generate code
-            generated_code = self._generate_code(prompt, language, style, include_comments)
-            
+            generated_code = self._generate_code(
+                prompt, language, style, include_comments
+            )
+
             # Prepare result
             result = {
-                'code': generated_code,
-                'language': language,
-                'style': style,
-                'success': True,
-                'cached': False
+                "code": generated_code,
+                "language": language,
+                "style": style,
+                "success": True,
+                "cached": False,
             }
 
             # Add to cache
@@ -73,14 +104,17 @@ class CodeGenerationSkill(BaseSkill):
             logger.error(f"Code generation failed: {str(e)}")
             return SkillResult(False, f"Code generation failed: {str(e)}")
 
-    def _generate_code(self, prompt, language='python', style='professional', include_comments=True):
+    def _generate_code(
+        self, prompt, language="python", style="professional", include_comments=True
+    ):
         """Generate code based on prompt and language"""
         try:
             # Try to use enhanced OpenCode integration if available
             try:
                 from enhanced_opencode_integration import EnhancedOpenCodeIntegration
+
                 integration = EnhancedOpenCodeIntegration()
-                
+
                 full_prompt = f"""
 Generate {style} {language} code for the following request:
 
@@ -95,42 +129,50 @@ Requirements:
 
 Generate only the code with brief explanations.
 """
-                
-                result = integration.generate_response(prompt=full_prompt, model='opencode/big-pickle', max_tokens=1000)
-                if result.get('success'):
-                    return result.get('response', '')
+
+                result = integration.generate_response(
+                    prompt=full_prompt, model="opencode/big-pickle", max_tokens=1000
+                )
+                if result.get("success"):
+                    return result.get("response", "")
             except ImportError:
-                logger.warning("Enhanced OpenCode integration not available, using fallback")
+                logger.warning(
+                    "Enhanced OpenCode integration not available, using fallback"
+                )
 
             # Fallback to template-based generation
-            return self._generate_template_code(prompt, language, style, include_comments)
+            return self._generate_template_code(
+                prompt, language, style, include_comments
+            )
 
         except Exception as e:
             logger.error(f"Code generation error: {str(e)}")
             return self._generate_fallback_code(prompt, language)
 
-    def _generate_template_code(self, prompt, language='python', style='professional', include_comments=True):
+    def _generate_template_code(
+        self, prompt, language="python", style="professional", include_comments=True
+    ):
         """Fallback template-based code generation"""
         prompt_lower = prompt.lower()
-        
-        if 'autonomous' in prompt_lower and 'intelligence' in prompt_lower:
+
+        if "autonomous" in prompt_lower and "intelligence" in prompt_lower:
             return self._generate_autonomous_intelligence_code(language)
-        elif 'analytics' in prompt_lower or 'analysis' in prompt_lower:
+        elif "analytics" in prompt_lower or "analysis" in prompt_lower:
             return self._generate_analytics_code(language)
-        elif 'workflow' in prompt_lower:
+        elif "workflow" in prompt_lower:
             return self._generate_workflow_code(language)
-        elif 'routing' in prompt_lower or 'router' in prompt_lower:
+        elif "routing" in prompt_lower or "router" in prompt_lower:
             return self._generate_routing_code(language)
-        elif 'integration' in prompt_lower:
+        elif "integration" in prompt_lower:
             return self._generate_integration_code(language)
-        elif 'machine learning' in prompt_lower or 'ml' in prompt_lower:
+        elif "machine learning" in prompt_lower or "ml" in prompt_lower:
             return self._generate_ml_code(language)
         else:
             return self._generate_general_code(prompt, language)
 
-    def _generate_autonomous_intelligence_code(self, language='python'):
+    def _generate_autonomous_intelligence_code(self, language="python"):
         """Generate autonomous intelligence system code"""
-        if language == 'python':
+        if language == "python":
             return '''
 import logging
 import time
@@ -236,8 +278,8 @@ if __name__ == "__main__":
     summary = ai.get_performance_summary()
     print(f"Performance summary: {summary}")
 '''
-        elif language == 'javascript':
-            return '''
+        elif language == "javascript":
+            return """
 class LearningMetric {
     constructor(timestamp, taskType, modelUsed, success, responseTime, userSatisfaction = null) {
         this.timestamp = timestamp;
@@ -317,13 +359,15 @@ class AutonomousIntelligence {
 const ai = new AutonomousIntelligence();
 ai.learnFromInteraction("code_generation", "gpt-4", true, 1.2, 0.9);
 console.log("Optimal model:", ai.getOptimalModel("code_generation"));
-'''
+"""
         else:
-            return self._generate_general_code("autonomous intelligence system", language)
+            return self._generate_general_code(
+                "autonomous intelligence system", language
+            )
 
-    def _generate_analytics_code(self, language='python'):
+    def _generate_analytics_code(self, language="python"):
         """Generate analytics system code"""
-        if language == 'python':
+        if language == "python":
             return '''
 import logging
 import time
@@ -430,25 +474,25 @@ if __name__ == "__main__":
         else:
             return self._generate_general_code("analytics system", language)
 
-    def _generate_workflow_code(self, language='python'):
+    def _generate_workflow_code(self, language="python"):
         """Generate workflow system code"""
         return self._generate_general_code("workflow automation system", language)
 
-    def _generate_routing_code(self, language='python'):
+    def _generate_routing_code(self, language="python"):
         """Generate routing system code"""
         return self._generate_general_code("intelligent routing system", language)
 
-    def _generate_integration_code(self, language='python'):
+    def _generate_integration_code(self, language="python"):
         """Generate integration system code"""
         return self._generate_general_code("system integration layer", language)
 
-    def _generate_ml_code(self, language='python'):
+    def _generate_ml_code(self, language="python"):
         """Generate machine learning code"""
         return self._generate_general_code("machine learning pipeline", language)
 
-    def _generate_general_code(self, prompt, language='python'):
+    def _generate_general_code(self, prompt, language="python"):
         """Generate general purpose code"""
-        if language == 'python':
+        if language == "python":
             return f'''
 """
 Generated code for: {prompt}
@@ -508,7 +552,7 @@ if __name__ == "__main__":
     status = system.get_status()
     print(f"Status: {{status}}")
 '''
-        elif language == 'javascript':
+        elif language == "javascript":
             return f'''
 /**
  * Generated code for: {prompt}
@@ -559,9 +603,9 @@ const result = system.execute({{ test: true }});
 console.log(`Result: ${{JSON.stringify(result)}}`);
 '''
         else:
-            return f'// Generated code for: {prompt}\\n// Implementation for {language} would go here'
+            return f"// Generated code for: {prompt}\\n// Implementation for {language} would go here"
 
-    def _generate_fallback_code(self, prompt, language='python'):
+    def _generate_fallback_code(self, prompt, language="python"):
         """Generate fallback code when all else fails"""
         return f'''
 # Fallback generated code for: {prompt}
@@ -582,19 +626,22 @@ if __name__ == "__main__":
         if len(self._cache) >= self._max_cache_size:
             self._cache.popitem(last=False)
         self._cache[key] = value.copy()
-        self._cache[key]['cached'] = False
+        self._cache[key]["cached"] = False
+
 
 # Test the skill
 if __name__ == "__main__":
     skill = CodeGenerationSkill()
-    
+
     # Test execution
-    result = skill.execute({
-        "prompt": "Create an autonomous intelligence system",
-        "language": "python",
-        "style": "professional"
-    })
-    
+    result = skill.execute(
+        {
+            "prompt": "Create an autonomous intelligence system",
+            "language": "python",
+            "style": "professional",
+        }
+    )
+
     print(f"Result: {result.success}")
     print(f"Output: {result.output}")
     if result.data:

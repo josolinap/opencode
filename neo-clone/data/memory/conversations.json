@@ -1,0 +1,47 @@
+[
+  {
+    "timestamp": "2025-11-13T00:15:38.329212",
+    "session_id": "session_20251113_001537",
+    "user_message": "Provide a detailed SOLPHP trading recommendation and signal summary based on backtesting actual market data with real spreads. Focus only on SOL/SOLANA cryptocurrency pair. Include technical analysis, risk assessment, and entry/exit points.",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  },
+  {
+    "timestamp": "2025-11-13T01:28:09.615463",
+    "session_id": "session_20251113_012808",
+    "user_message": "\"Analyze the sentiment of this text: 'I absolutely love this new feature, it's amazing!'\"",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  },
+  {
+    "timestamp": "2025-11-15T17:37:41.209051",
+    "session_id": "session_20251115_173740",
+    "user_message": "-e \"skills\\nexit\"",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  },
+  {
+    "timestamp": "2025-11-15T17:39:13.580312",
+    "session_id": "session_20251115_173912",
+    "user_message": "-e \"skills\\nexit\"",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  },
+  {
+    "timestamp": "2025-11-15T17:40:27.139344",
+    "session_id": "session_20251115_174026",
+    "user_message": "What skills do you have available?",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": null
+  }
+]
