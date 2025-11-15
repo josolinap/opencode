@@ -5,35 +5,11 @@ node_modules
 .env
 .idea
 .vscode
+*~
 openapi.json
 playground
 tmp
 dist
 .turbo
-
-# Python cache and runtime files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-*.log
-
-# Neo-Clone specific
-neo-clone/data/logs/
-neo-clone/data/memory/
-neo-clone/data/vector_memory/
-model_usage_history.json
-go.msi
-
-# Development artifacts
-*.msi
-demo_*.py
-test_*.py
-*_demo.py
-*_plot.png
+**/.serena
+.serena/

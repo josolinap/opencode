@@ -1,7 +1,7 @@
 import path from "path"
 import os from "os"
 import fs from "fs/promises"
-import z from "zod/v4"
+import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
@@ -17,16 +17,17 @@ import {
   tool,
   wrapLanguageModel,
   type StreamTextResult,
-  LoadAPIKeyError,
   stepCountIs,
   jsonSchema,
 } from "ai"
 import { SessionCompaction } from "./compaction"
+import { SessionLock } from "./lock"
 import { Instance } from "../project/instance"
 import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { Plugin } from "../plugin"
+import { SessionRetry } from "./retry"
 
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
@@ -43,16 +44,20 @@ import { TaskTool } from "../tool/task"
 import { FileTime } from "../file/time"
 import { Permission } from "../permission"
 import { Snapshot } from "../snapshot"
-import { NamedError } from "../util/error"
 import { ulid } from "ulid"
 import { spawn } from "child_process"
 import { Command } from "../command"
-import { $ } from "bun"
+import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
+import { SessionSummary } from "./summary"
+import { Config } from "@/config/config"
+import { NamedError } from "@/util/error"
 
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = 32_000
+  const MAX_RETRIES = 10
+  const DOOM_LOOP_THRESHOLD = 3
 
   export const Event = {
     Idle: Bus.event(
@@ -65,7 +70,6 @@ export namespace SessionPrompt {
 
   const state = Instance.state(
     () => {
-      const pending = new Map<string, AbortController>()
       const queued = new Map<
         string,
         {
@@ -73,16 +77,22 @@ export namespace SessionPrompt {
           callback: (input: MessageV2.WithParts) => void
         }[]
       >()
+      const pending = new Set<Promise<void>>()
+
+      const track = (promise: Promise<void>) => {
+        pending.add(promise)
+        promise.finally(() => pending.delete(promise))
+      }
 
       return {
-        pending,
         queued,
+        pending,
+        track,
       }
     },
-    async (state) => {
-      for (const [_, controller] of state.pending) {
-        controller.abort()
-      }
+    async (current) => {
+      current.queued.clear()
+      await Promise.allSettled([...current.pending])
     },
   )
 
@@ -96,6 +106,7 @@ export namespace SessionPrompt {
       })
       .optional(),
     agent: z.string().optional(),
+    noReply: z.boolean().optional(),
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     parts: z.array(
@@ -134,6 +145,54 @@ export namespace SessionPrompt {
     ),
   })
   export type PromptInput = z.infer<typeof PromptInput>
+
+  export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
+    const parts: PromptInput["parts"] = [
+      {
+        type: "text",
+        text: template,
+      },
+    ]
+    const files = ConfigMarkdown.files(template)
+    await Promise.all(
+      files.map(async (match) => {
+        const name = match[1]
+        const filepath = name.startsWith("~/")
+          ? path.join(os.homedir(), name.slice(2))
+          : path.resolve(Instance.worktree, name)
+
+        const stats = await fs.stat(filepath).catch(() => undefined)
+        if (!stats) {
+          const agent = await Agent.get(name)
+          if (agent) {
+            parts.push({
+              type: "agent",
+              name: agent.name,
+            })
+          }
+          return
+        }
+
+        if (stats.isDirectory()) {
+          parts.push({
+            type: "file",
+            url: `file://${filepath}`,
+            filename: name,
+            mime: "application/x-directory",
+          })
+          return
+        }
+
+        parts.push({
+          type: "file",
+          url: `file://${filepath}`,
+          filename: name,
+          mime: "text/plain",
+        })
+      }),
+    )
+    return parts
+  }
   export async function prompt(input: PromptInput): Promise<MessageV2.WithParts> {
     const l = log.clone().tag("session", input.sessionID)
     l.info("prompt")
@@ -143,6 +202,11 @@ export namespace SessionPrompt {
 
     const userMsg = await createUserMessage(input)
     await Session.touch(input.sessionID)
+
+    // Early return for context-only messages (no AI inference)
+    if (input.noReply) {
+      return userMsg
+    }
 
     if (isBusy(input.sessionID)) {
       return new Promise((resolve) => {
@@ -159,7 +223,7 @@ export namespace SessionPrompt {
       agent,
       model: input.model,
     }).then((x) => Provider.getModel(x.providerID, x.modelID))
-    const outputLimit = Math.min(model.info.limit.output, OUTPUT_TOKEN_MAX) || OUTPUT_TOKEN_MAX
+
     using abort = lock(input.sessionID)
 
     const system = await resolveSystemPrompt({
@@ -190,6 +254,8 @@ export namespace SessionPrompt {
     const params = await Plugin.trigger(
       "chat.params",
       {
+        sessionID: input.sessionID,
+        agent: agent.name,
         model: model.info,
         provider: await Provider.getProvider(model.providerID),
         message: userMsg,
@@ -200,7 +266,7 @@ export namespace SessionPrompt {
           : undefined,
         topP: agent.topP ?? ProviderTransform.topP(model.providerID, model.modelID),
         options: {
-          ...ProviderTransform.options(model.providerID, model.modelID, input.sessionID),
+          ...ProviderTransform.options(model.providerID, model.modelID, model.npm ?? "", input.sessionID),
           ...model.info.options,
           ...agent.options,
         },
@@ -214,106 +280,182 @@ export namespace SessionPrompt {
           sessionID: input.sessionID,
           model: model.info,
           providerID: model.providerID,
+          signal: abort.signal,
         }),
         (messages) => insertReminders({ messages, agent }),
       )
-      if (step === 0)
-        ensureTitle({
-          session,
-          history: msgs,
-          message: userMsg,
-          providerID: model.providerID,
-          modelID: model.info.id,
-        })
       step++
-      await processor.next()
+      await processor.next(msgs.findLast((m) => m.info.role === "user")?.info.id!)
+      if (step === 1) {
+        state().track(
+          ensureTitle({
+            session,
+            history: msgs,
+            message: userMsg,
+            providerID: model.providerID,
+            modelID: model.info.id,
+          }),
+        )
+        SessionSummary.summarize({
+          sessionID: input.sessionID,
+          messageID: userMsg.info.id,
+        })
+      }
       await using _ = defer(async () => {
         await processor.end()
       })
-      const stream = streamText({
-        onError(error) {
-          log.error("stream error", {
-            error,
-          })
-        },
-        async experimental_repairToolCall(input) {
-          const lower = input.toolCall.toolName.toLowerCase()
-          if (lower !== input.toolCall.toolName && tools[lower]) {
-            log.info("repairing tool call", {
-              tool: input.toolCall.toolName,
-              repaired: lower,
+      const doStream = () =>
+        streamText({
+          onError(error) {
+            log.error("stream error", {
+              error,
             })
+          },
+          async experimental_repairToolCall(input) {
+            const lower = input.toolCall.toolName.toLowerCase()
+            if (lower !== input.toolCall.toolName && tools[lower]) {
+              log.info("repairing tool call", {
+                tool: input.toolCall.toolName,
+                repaired: lower,
+              })
+              return {
+                ...input.toolCall,
+                toolName: lower,
+              }
+            }
             return {
               ...input.toolCall,
-              toolName: lower,
+              input: JSON.stringify({
+                tool: input.toolCall.toolName,
+                error: input.error.message,
+              }),
+              toolName: "invalid",
             }
-          }
-          return {
-            ...input.toolCall,
-            input: JSON.stringify({
-              tool: input.toolCall.toolName,
-              error: input.error.message,
-            }),
-            toolName: "invalid",
-          }
-        },
-        headers:
-          model.providerID === "opencode"
-            ? {
-                "x-opencode-session": input.sessionID,
-                "x-opencode-request": userMsg.info.id,
-              }
-            : undefined,
-        maxRetries: 10,
-        activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
-        maxOutputTokens: ProviderTransform.maxOutputTokens(model.providerID, outputLimit, params.options),
-        abortSignal: abort.signal,
-        providerOptions: {
-          [model.npm === "@ai-sdk/openai" ? "openai" : model.providerID]: params.options,
-        },
-        stopWhen: stepCountIs(1),
-        temperature: params.temperature,
-        topP: params.topP,
-        messages: [
-          ...system.map(
-            (x): ModelMessage => ({
-              role: "system",
-              content: x,
-            }),
-          ),
-          ...MessageV2.toModelMessage(
-            msgs.filter((m) => {
-              if (m.info.role !== "assistant" || m.info.error === undefined) {
-                return true
-              }
-              if (
-                MessageV2.AbortedError.isInstance(m.info.error) &&
-                m.parts.some((part) => part.type !== "step-start" && part.type !== "reasoning")
-              ) {
-                return true
-              }
-
-              return false
-            }),
-          ),
-        ],
-        tools: model.info.tool_call === false ? undefined : tools,
-        model: wrapLanguageModel({
-          model: model.language,
-          middleware: [
-            {
-              async transformParams(args) {
-                if (args.type === "stream") {
-                  // @ts-expect-error
-                  args.params.prompt = ProviderTransform.message(args.params.prompt, model.providerID, model.modelID)
+          },
+          headers: {
+            ...(model.providerID === "opencode"
+              ? {
+                  "x-opencode-session": input.sessionID,
+                  "x-opencode-request": userMsg.info.id,
                 }
-                return args.params
-              },
-            },
+              : undefined),
+            ...model.info.headers,
+          },
+          // set to 0, we handle loop
+          maxRetries: 0,
+          activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+          maxOutputTokens: ProviderTransform.maxOutputTokens(
+            model.npm ?? "",
+            params.options,
+            model.info.limit.output,
+            OUTPUT_TOKEN_MAX,
+          ),
+          abortSignal: abort.signal,
+          providerOptions: ProviderTransform.providerOptions(model.npm, model.providerID, params.options),
+          stopWhen: stepCountIs(1),
+          temperature: params.temperature,
+          topP: params.topP,
+          messages: [
+            ...system.map(
+              (x): ModelMessage => ({
+                role: "system",
+                content: x,
+              }),
+            ),
+            ...MessageV2.toModelMessage(
+              msgs.filter((m) => {
+                if (m.info.role !== "assistant" || m.info.error === undefined) {
+                  return true
+                }
+                if (
+                  MessageV2.AbortedError.isInstance(m.info.error) &&
+                  m.parts.some((part) => part.type !== "step-start" && part.type !== "reasoning")
+                ) {
+                  return true
+                }
+
+                return false
+              }),
+            ),
           ],
-        }),
+          tools: model.info.tool_call === false ? undefined : tools,
+          model: wrapLanguageModel({
+            model: model.language,
+            middleware: [
+              {
+                async transformParams(args) {
+                  if (args.type === "stream") {
+                    // @ts-expect-error
+                    args.params.prompt = ProviderTransform.message(args.params.prompt, model.providerID, model.modelID)
+                  }
+                  return args.params
+                },
+              },
+            ],
+          }),
+        })
+
+      let stream = doStream()
+      const cfg = await Config.get()
+      const maxRetries = cfg.experimental?.chatMaxRetries ?? MAX_RETRIES
+      let result = await processor.process(stream, {
+        count: 0,
+        max: maxRetries,
       })
-      const result = await processor.process(stream)
+      if (result.shouldRetry) {
+        const start = Date.now()
+        for (let retry = 1; retry < maxRetries; retry++) {
+          const lastRetryPart = result.parts.findLast((p): p is MessageV2.RetryPart => p.type === "retry")
+
+          if (lastRetryPart) {
+            const delayMs = SessionRetry.getBoundedDelay({
+              error: lastRetryPart.error,
+              attempt: retry,
+              startTime: start,
+            })
+            if (!delayMs) {
+              break
+            }
+
+            log.info("retrying with backoff", {
+              attempt: retry,
+              delayMs,
+              elapsed: Date.now() - start,
+            })
+
+            const stop = await SessionRetry.sleep(delayMs, abort.signal)
+              .then(() => false)
+              .catch((error) => {
+                let err = error
+                if (error instanceof DOMException && error.name === "AbortError") {
+                  err = new MessageV2.AbortedError(
+                    { message: error.message },
+                    {
+                      cause: error,
+                    },
+                  ).toObject()
+                }
+                result.info.error = err
+                Bus.publish(Session.Event.Error, {
+                  sessionID: result.info.sessionID,
+                  error: result.info.error,
+                })
+                return true
+              })
+
+            if (stop) break
+          }
+
+          stream = doStream()
+          result = await processor.process(stream, {
+            count: retry,
+            max: maxRetries,
+          })
+          if (!result.shouldRetry) {
+            break
+          }
+        }
+      }
       await processor.end()
 
       const queued = state().queued.get(input.sessionID) ?? []
@@ -337,8 +479,13 @@ export namespace SessionPrompt {
     }
   }
 
-  async function getMessages(input: { sessionID: string; model: ModelsDev.Model; providerID: string }) {
-    let msgs = await Session.messages(input.sessionID).then(MessageV2.filterSummarized)
+  async function getMessages(input: {
+    sessionID: string
+    model: ModelsDev.Model
+    providerID: string
+    signal: AbortSignal
+  }) {
+    let msgs = await MessageV2.filterCompacted(MessageV2.stream(input.sessionID))
     const lastAssistant = msgs.findLast((msg) => msg.info.role === "assistant")
     if (
       lastAssistant?.info.role === "assistant" &&
@@ -351,6 +498,7 @@ export namespace SessionPrompt {
         sessionID: input.sessionID,
         providerID: input.providerID,
         modelID: input.model.id,
+        signal: input.signal,
       })
       const resumeMsgID = Identifier.ascending("message")
       const resumeMsg = {
@@ -452,6 +600,10 @@ export namespace SessionPrompt {
             abort: options.abortSignal!,
             messageID: input.processor.message.id,
             callID: options.toolCallId,
+            extra: {
+              modelID: input.modelID,
+              providerID: input.providerID,
+            },
             agent: input.agent.name,
             metadata: async (val) => {
               const match = input.processor.partFromToolCall(options.toolCallId)
@@ -508,10 +660,7 @@ export namespace SessionPrompt {
           },
         )
         const result = await execute(args, opts)
-        const output = result.content
-          .filter((x: any) => x.type === "text")
-          .map((x: any) => x.text)
-          .join("\n\n")
+
         await Plugin.trigger(
           "tool.execute.after",
           {
@@ -522,8 +671,31 @@ export namespace SessionPrompt {
           result,
         )
 
+        const textParts: string[] = []
+        const attachments: MessageV2.FilePart[] = []
+
+        for (const item of result.content) {
+          if (item.type === "text") {
+            textParts.push(item.text)
+          } else if (item.type === "image") {
+            attachments.push({
+              id: Identifier.ascending("part"),
+              sessionID: input.sessionID,
+              messageID: input.processor.message.id,
+              type: "file",
+              mime: item.mimeType,
+              url: `data:${item.mimeType};base64,${item.data}`,
+            })
+          }
+          // Add support for other types if needed
+        }
+
         return {
-          output,
+          title: "",
+          metadata: result.metadata ?? {},
+          output: textParts.join("\n\n"),
+          attachments,
+          content: result.content, // directly return content to preserve ordering when outputting to model
         }
       }
       item.toModelOutput = (result) => {
@@ -581,9 +753,15 @@ export namespace SessionPrompt {
               }
               break
             case "file:":
+              log.info("file", { mime: part.mime })
               // have to normalize, symbol search returns absolute paths
               // Decode the pathname since URL constructor doesn't automatically decode it
-              const filePath = decodeURIComponent(url.pathname)
+              const filepath = fileURLToPath(part.url)
+              const stat = await Bun.file(filepath).stat()
+
+              if (stat.isDirectory()) {
+                part.mime = "application/x-directory"
+              }
 
               if (part.mime === "text/plain") {
                 let offset: number | undefined = undefined
@@ -593,14 +771,14 @@ export namespace SessionPrompt {
                   end: url.searchParams.get("end"),
                 }
                 if (range.start != null) {
-                  const filePath = part.url.split("?")[0]
+                  const filePathURI = part.url.split("?")[0]
                   let start = parseInt(range.start)
                   let end = range.end ? parseInt(range.end) : undefined
                   // some LSP servers (eg, gopls) don't give full range in
                   // workspace/symbol searches, so we'll try to find the
                   // symbol in the document to get the full range
                   if (start === end) {
-                    const symbols = await LSP.documentSymbol(filePath)
+                    const symbols = await LSP.documentSymbol(filePathURI)
                     for (const symbol of symbols) {
                       let range: LSP.Range | undefined
                       if ("range" in symbol) {
@@ -620,18 +798,9 @@ export namespace SessionPrompt {
                     limit = end - offset
                   }
                 }
-                const args = { filePath, offset, limit }
-                const result = await ReadTool.init().then((t) =>
-                  t.execute(args, {
-                    sessionID: input.sessionID,
-                    abort: new AbortController().signal,
-                    agent: input.agent!,
-                    messageID: info.id,
-                    extra: { bypassCwdCheck: true },
-                    metadata: async () => {},
-                  }),
-                )
-                return [
+                const args = { filePath: filepath, offset, limit }
+
+                const pieces: MessageV2.Part[] = [
                   {
                     id: Identifier.ascending("part"),
                     messageID: info.id,
@@ -640,25 +809,59 @@ export namespace SessionPrompt {
                     synthetic: true,
                     text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
                   },
-                  {
-                    id: Identifier.ascending("part"),
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                    type: "text",
-                    synthetic: true,
-                    text: result.output,
-                  },
-                  {
-                    ...part,
-                    id: part.id ?? Identifier.ascending("part"),
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                  },
                 ]
+
+                await ReadTool.init()
+                  .then(async (t) => {
+                    const result = await t.execute(args, {
+                      sessionID: input.sessionID,
+                      abort: new AbortController().signal,
+                      agent: input.agent!,
+                      messageID: info.id,
+                      extra: { bypassCwdCheck: true },
+                      metadata: async () => {},
+                    })
+                    pieces.push(
+                      {
+                        id: Identifier.ascending("part"),
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                        type: "text",
+                        synthetic: true,
+                        text: result.output,
+                      },
+                      {
+                        ...part,
+                        id: part.id ?? Identifier.ascending("part"),
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                      },
+                    )
+                  })
+                  .catch((error) => {
+                    log.error("failed to read file", { error })
+                    const message = error instanceof Error ? error.message : error.toString()
+                    Bus.publish(Session.Event.Error, {
+                      sessionID: input.sessionID,
+                      error: new NamedError.Unknown({
+                        message,
+                      }).toObject(),
+                    })
+                    pieces.push({
+                      id: Identifier.ascending("part"),
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `Read tool failed to read ${filepath} with the following error: ${message}`,
+                    })
+                  })
+
+                return pieces
               }
 
               if (part.mime === "application/x-directory") {
-                const args = { path: filePath }
+                const args = { path: filepath }
                 const result = await ListTool.init().then((t) =>
                   t.execute(args, {
                     sessionID: input.sessionID,
@@ -695,15 +898,15 @@ export namespace SessionPrompt {
                 ]
               }
 
-              const file = Bun.file(filePath)
-              FileTime.read(input.sessionID, filePath)
+              const file = Bun.file(filepath)
+              FileTime.read(input.sessionID, filepath)
               return [
                 {
                   id: Identifier.ascending("part"),
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  text: `Called the Read tool with the following input: {\"filePath\":\"${filePath}\"}`,
+                  text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
                   synthetic: true,
                 },
                 {
@@ -754,7 +957,12 @@ export namespace SessionPrompt {
 
     await Plugin.trigger(
       "chat.message",
-      {},
+      {
+        sessionID: input.sessionID,
+        agent: input.agent,
+        model: input.model,
+        messageID: input.messageID,
+      },
       {
         message: info,
         parts,
@@ -812,11 +1020,11 @@ export namespace SessionPrompt {
     let snapshot: string | undefined
     let blocked = false
 
-    async function createMessage() {
+    async function createMessage(parentID: string) {
       const msg: MessageV2.Info = {
         id: Identifier.ascending("message"),
+        parentID,
         role: "assistant",
-        system: input.system,
         mode: input.agent,
         path: {
           cwd: Instance.directory,
@@ -850,11 +1058,11 @@ export namespace SessionPrompt {
           assistantMsg = undefined
         }
       },
-      async next() {
+      async next(parentID: string) {
         if (assistantMsg) {
           throw new Error("end previous assistant message first")
         }
-        assistantMsg = await createMessage()
+        assistantMsg = await createMessage(parentID)
         return assistantMsg
       },
       get message() {
@@ -864,18 +1072,16 @@ export namespace SessionPrompt {
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
-      async process(stream: StreamTextResult<Record<string, AITool>, never>) {
+      async process(stream: StreamTextResult<Record<string, AITool>, never>, retries: { count: number; max: number }) {
         log.info("process")
         if (!assistantMsg) throw new Error("call next() first before processing")
+        let shouldRetry = false
         try {
           let currentText: MessageV2.TextPart | undefined
           let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
 
           for await (const value of stream.fullStream) {
             input.abort.throwIfAborted()
-            log.info("part", {
-              type: value.type,
-            })
             switch (value.type) {
               case "start":
                 break
@@ -902,7 +1108,7 @@ export namespace SessionPrompt {
                   const part = reasoningMap[value.id]
                   part.text += value.text
                   if (value.providerMetadata) part.metadata = value.providerMetadata
-                  if (part.text) await Session.updatePart(part)
+                  if (part.text) await Session.updatePart({ part, delta: value.text })
                 }
                 break
 
@@ -931,6 +1137,8 @@ export namespace SessionPrompt {
                   callID: value.id,
                   state: {
                     status: "pending",
+                    input: {},
+                    raw: "",
                   },
                 })
                 toolcalls[value.id] = part as MessageV2.ToolPart
@@ -958,6 +1166,35 @@ export namespace SessionPrompt {
                     metadata: value.providerMetadata,
                   })
                   toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+
+                  const parts = await MessageV2.parts(assistantMsg.id)
+                  const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
+                  if (
+                    lastThree.length === DOOM_LOOP_THRESHOLD &&
+                    lastThree.every(
+                      (p) =>
+                        p.type === "tool" &&
+                        p.tool === value.toolName &&
+                        p.state.status !== "pending" &&
+                        JSON.stringify(p.state.input) === JSON.stringify(value.input),
+                    )
+                  ) {
+                    const permission = await Agent.get(input.agent).then((x) => x.permission)
+                    if (permission.doom_loop === "ask") {
+                      await Permission.ask({
+                        type: "doom_loop",
+                        pattern: value.toolName,
+                        sessionID: assistantMsg.sessionID,
+                        messageID: assistantMsg.id,
+                        callID: value.toolCallId,
+                        title: `Possible doom loop: "${value.toolName}" called ${DOOM_LOOP_THRESHOLD} times with identical arguments`,
+                        metadata: {
+                          tool: value.toolName,
+                          input: value.input,
+                        },
+                      })
+                    }
+                  }
                 }
                 break
               }
@@ -976,8 +1213,10 @@ export namespace SessionPrompt {
                         start: match.state.time.start,
                         end: Date.now(),
                       },
+                      attachments: value.output.attachments,
                     },
                   })
+
                   delete toolcalls[value.toolCallId]
                 }
                 break
@@ -999,6 +1238,7 @@ export namespace SessionPrompt {
                       },
                     },
                   })
+
                   if (value.error instanceof Permission.RejectedError) {
                     blocked = true
                   }
@@ -1010,21 +1250,28 @@ export namespace SessionPrompt {
                 throw value.error
 
               case "start-step":
+                snapshot = await Snapshot.track()
                 await Session.updatePart({
                   id: Identifier.ascending("part"),
                   messageID: assistantMsg.id,
                   sessionID: assistantMsg.sessionID,
+                  snapshot,
                   type: "step-start",
                 })
-                snapshot = await Snapshot.track()
                 break
 
               case "finish-step":
-                const usage = Session.getUsage(input.model, value.usage, value.providerMetadata)
+                const usage = Session.getUsage({
+                  model: input.model,
+                  usage: value.usage,
+                  metadata: value.providerMetadata,
+                })
                 assistantMsg.cost += usage.cost
                 assistantMsg.tokens = usage.tokens
                 await Session.updatePart({
                   id: Identifier.ascending("part"),
+                  reason: value.finishReason,
+                  snapshot: await Snapshot.track(),
                   messageID: assistantMsg.id,
                   sessionID: assistantMsg.sessionID,
                   type: "step-finish",
@@ -1046,6 +1293,10 @@ export namespace SessionPrompt {
                   }
                   snapshot = undefined
                 }
+                SessionSummary.summarize({
+                  sessionID: input.sessionID,
+                  messageID: assistantMsg.parentID,
+                })
                 break
 
               case "text-start":
@@ -1066,7 +1317,11 @@ export namespace SessionPrompt {
                 if (currentText) {
                   currentText.text += value.text
                   if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                  if (currentText.text) await Session.updatePart(currentText)
+                  if (currentText.text)
+                    await Session.updatePart({
+                      part: currentText,
+                      delta: value.text,
+                    })
                 }
                 break
 
@@ -1099,88 +1354,70 @@ export namespace SessionPrompt {
           log.error("process", {
             error: e,
           })
-          switch (true) {
-            case e instanceof DOMException && e.name === "AbortError":
-              assistantMsg.error = new MessageV2.AbortedError(
-                { message: e.message },
-                {
-                  cause: e,
-                },
-              ).toObject()
-              break
-            case MessageV2.OutputLengthError.isInstance(e):
-              assistantMsg.error = e
-              break
-            case LoadAPIKeyError.isInstance(e):
-              assistantMsg.error = new MessageV2.AuthError(
-                {
-                  providerID: input.providerID,
-                  message: e.message,
-                },
-                { cause: e },
-              ).toObject()
-              break
-            case e instanceof Error:
-              assistantMsg.error = new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
-              break
-            default:
-              assistantMsg.error = new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e })
+          const error = MessageV2.fromError(e, { providerID: input.providerID })
+          if (retries.count < retries.max && MessageV2.APIError.isInstance(error) && error.data.isRetryable) {
+            shouldRetry = true
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: assistantMsg.id,
+              sessionID: assistantMsg.sessionID,
+              type: "retry",
+              attempt: retries.count + 1,
+              time: {
+                created: Date.now(),
+              },
+              error,
+            })
+          } else {
+            assistantMsg.error = error
+            Bus.publish(Session.Event.Error, {
+              sessionID: assistantMsg.sessionID,
+              error: assistantMsg.error,
+            })
           }
-          Bus.publish(Session.Event.Error, {
-            sessionID: assistantMsg.sessionID,
-            error: assistantMsg.error,
-          })
         }
-        const p = await Session.getParts(assistantMsg.id)
+        const p = await MessageV2.parts(assistantMsg.id)
         for (const part of p) {
           if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-            Session.updatePart({
+            await Session.updatePart({
               ...part,
               state: {
+                ...part.state,
                 status: "error",
                 error: "Tool execution aborted",
                 time: {
                   start: Date.now(),
                   end: Date.now(),
                 },
-                input: {},
               },
             })
           }
         }
-        assistantMsg.time.completed = Date.now()
+        if (!shouldRetry) {
+          assistantMsg.time.completed = Date.now()
+        }
         await Session.updateMessage(assistantMsg)
-        return { info: assistantMsg, parts: p, blocked }
+        return { info: assistantMsg, parts: p, blocked, shouldRetry }
       },
     }
     return result
   }
 
   function isBusy(sessionID: string) {
-    return state().pending.has(sessionID)
-  }
-
-  export function abort(sessionID: string) {
-    const controller = state().pending.get(sessionID)
-    if (!controller) return false
-    log.info("aborting", {
-      sessionID,
-    })
-    controller.abort()
-    state().pending.delete(sessionID)
-    return true
+    return SessionLock.isLocked(sessionID)
   }
 
   function lock(sessionID: string) {
+    const handle = SessionLock.acquire({
+      sessionID,
+    })
     log.info("locking", { sessionID })
-    if (state().pending.has(sessionID)) throw new Error("TODO")
-    const controller = new AbortController()
-    state().pending.set(sessionID, controller)
     return {
-      signal: controller.signal,
+      signal: handle.signal,
+      abort: handle.abort,
       async [Symbol.dispose]() {
+        handle[Symbol.dispose]()
         log.info("unlocking", { sessionID })
-        state().pending.delete(sessionID)
 
         const session = await Session.get(sessionID)
         if (session.parentID) return
@@ -1226,7 +1463,7 @@ export namespace SessionPrompt {
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
-      system: [],
+      parentID: userMsg.id,
       mode: input.agent,
       cost: 0,
       path: {
@@ -1268,20 +1505,42 @@ export namespace SessionPrompt {
     const shell = process.env["SHELL"] ?? "bash"
     const shellName = path.basename(shell)
 
-    const scripts: Record<string, string> = {
-      nu: input.command,
-      fish: `eval "${input.command}"`,
+    const invocations: Record<string, { args: string[] }> = {
+      nu: {
+        args: ["-c", input.command],
+      },
+      fish: {
+        args: ["-c", input.command],
+      },
+      zsh: {
+        args: [
+          "-c",
+          "-l",
+          `
+            [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true
+            [[ -f "\${ZDOTDIR:-$HOME}/.zshrc" ]] && source "\${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true
+            ${input.command}
+          `,
+        ],
+      },
+      bash: {
+        args: [
+          "-c",
+          "-l",
+          `
+            [[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true
+            ${input.command}
+          `,
+        ],
+      },
+      // Fallback: any shell that doesn't match those above
+      "": {
+        args: ["-c", "-l", `${input.command}`],
+      },
     }
 
-    const script =
-      scripts[shellName] ??
-      `[[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true
-       [[ -f "\${ZDOTDIR:-$HOME}/.zshrc" ]] && source "\${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true
-       [[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true
-       eval "${input.command}"`
-
-    const isFishOrNu = shellName === "fish" || shellName === "nu"
-    const args = isFishOrNu ? ["-c", script] : ["-c", "-l", script]
+    const matchingInvocation = invocations[shellName] ?? invocations[""]
+    const args = matchingInvocation?.args
 
     const proc = spawn(shell, args, {
       cwd: Instance.directory,
@@ -1360,6 +1619,9 @@ export namespace SessionPrompt {
   })
   export type CommandInput = z.infer<typeof CommandInput>
   const bashRegex = /!`([^`]+)`/g
+  const argsRegex = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g
+  const placeholderRegex = /\$(\d+)/g
+  const quoteTrimRegex = /^["']|["']$/g
   /**
    * Regular expression to match @ file references in text
    * Matches @ followed by file paths, excluding commas, periods at end of sentences, and backticks
@@ -1371,7 +1633,25 @@ export namespace SessionPrompt {
     const command = await Command.get(input.command)
     const agentName = command.agent ?? input.agent ?? "build"
 
-    let template = command.template.replace("$ARGUMENTS", input.arguments)
+    const raw = input.arguments.match(argsRegex) ?? []
+    const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
+
+    const placeholders = command.template.match(placeholderRegex) ?? []
+    let last = 0
+    for (const item of placeholders) {
+      const value = Number(item.slice(1))
+      if (value > last) last = value
+    }
+
+    // Let the final placeholder swallow any extra arguments so prompts read naturally
+    const withArgs = command.template.replaceAll(placeholderRegex, (_, index) => {
+      const position = Number(index)
+      const argIndex = position - 1
+      if (argIndex >= args.length) return ""
+      if (position === last) return args.slice(argIndex).join(" ")
+      return args[argIndex]
+    })
+    let template = withArgs.replaceAll("$ARGUMENTS", input.arguments)
 
     const shell = ConfigMarkdown.shell(template)
     if (shell.length > 0) {
@@ -1387,52 +1667,9 @@ export namespace SessionPrompt {
       let index = 0
       template = template.replace(bashRegex, () => results[index++])
     }
+    template = template.trim()
 
-    const parts = [
-      {
-        type: "text",
-        text: template,
-      },
-    ] as PromptInput["parts"]
-
-    const files = ConfigMarkdown.files(template)
-    await Promise.all(
-      files.map(async (match) => {
-        const name = match[1]
-        const filepath = name.startsWith("~/")
-          ? path.join(os.homedir(), name.slice(2))
-          : path.resolve(Instance.worktree, name)
-
-        const stats = await fs.stat(filepath).catch(() => undefined)
-        if (!stats) {
-          const agent = await Agent.get(name)
-          if (agent) {
-            parts.push({
-              type: "agent",
-              name: agent.name,
-            })
-          }
-          return
-        }
-
-        if (stats.isDirectory()) {
-          parts.push({
-            type: "file",
-            url: `file://${filepath}`,
-            filename: name,
-            mime: "application/x-directory",
-          })
-          return
-        }
-
-        parts.push({
-          type: "file",
-          url: `file://${filepath}`,
-          filename: name,
-          mime: "text/plain",
-        })
-      }),
-    )
+    const parts = await resolvePromptParts(template)
 
     const model = await (async () => {
       if (command.model) {
@@ -1451,6 +1688,8 @@ export namespace SessionPrompt {
     })()
 
     const agent = await Agent.get(agentName)
+    let result: MessageV2.WithParts
+
     if ((agent.mode === "subagent" && command.subtask !== false) || command.subtask === true) {
       using abort = lock(input.sessionID)
 
@@ -1476,7 +1715,7 @@ export namespace SessionPrompt {
       const assistantMsg: MessageV2.Assistant = {
         id: Identifier.ascending("message"),
         sessionID: input.sessionID,
-        system: [],
+        parentID: userMsg.id,
         mode: agentName,
         cost: 0,
         path: {
@@ -1525,7 +1764,7 @@ export namespace SessionPrompt {
       }
       await Session.updatePart(toolPart)
 
-      const result = await TaskTool.init().then((t) =>
+      const taskResult = await TaskTool.init().then((t) =>
         t.execute(args, {
           sessionID: input.sessionID,
           abort: abort.signal,
@@ -1553,22 +1792,31 @@ export namespace SessionPrompt {
           },
           input: toolPart.state.input,
           title: "",
-          metadata: result.metadata,
-          output: result.output,
+          metadata: taskResult.metadata,
+          output: taskResult.output,
         }
         await Session.updatePart(toolPart)
       }
 
-      return { info: assistantMsg, parts: [toolPart] }
+      result = { info: assistantMsg, parts: [toolPart] }
+    } else {
+      result = await prompt({
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        model,
+        agent: agentName,
+        parts,
+      })
     }
 
-    return prompt({
+    Bus.publish(Command.Event.Executed, {
+      name: input.command,
       sessionID: input.sessionID,
-      messageID: input.messageID,
-      model,
-      agent: agentName,
-      parts,
+      arguments: input.arguments,
+      messageID: result.info.id,
     })
+
+    return result
   }
 
   async function ensureTitle(input: {
@@ -1579,6 +1827,7 @@ export namespace SessionPrompt {
     modelID: string
   }) {
     if (input.session.parentID) return
+    if (!Session.isDefaultTitle(input.session.title)) return
     const isFirst =
       input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
         .length === 1
@@ -1586,7 +1835,7 @@ export namespace SessionPrompt {
     const small =
       (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
     const options = {
-      ...ProviderTransform.options(small.providerID, small.modelID, input.session.id),
+      ...ProviderTransform.options(small.providerID, small.modelID, small.npm ?? "", input.session.id),
       ...small.info.options,
     }
     if (small.providerID === "openai" || small.modelID.includes("gpt-5")) {
@@ -1597,11 +1846,9 @@ export namespace SessionPrompt {
         thinkingBudget: 0,
       }
     }
-    generateText({
+    await generateText({
       maxOutputTokens: small.info.reasoning ? 1500 : 20,
-      providerOptions: {
-        [small.providerID]: options,
-      },
+      providerOptions: ProviderTransform.providerOptions(small.npm, small.providerID, options),
       messages: [
         ...SystemPrompt.title(small.providerID).map(
           (x): ModelMessage => ({
@@ -1609,6 +1856,12 @@ export namespace SessionPrompt {
             content: x,
           }),
         ),
+        {
+          role: "user" as const,
+          content: `
+              The following is the text to summarize:
+            `,
+        },
         ...MessageV2.toModelMessage([
           {
             info: {
@@ -1623,14 +1876,21 @@ export namespace SessionPrompt {
           },
         ]),
       ],
+      headers: small.info.headers,
       model: small.language,
     })
       .then((result) => {
         if (result.text)
           return Session.update(input.session.id, (draft) => {
-            const cleaned = result.text.replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+            const cleaned = result.text
+              .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+              .split("\n")
+              .map((line) => line.trim())
+              .find((line) => line.length > 0)
+            if (!cleaned) return
+
             const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-            draft.title = title.trim()
+            draft.title = title
           })
       })
       .catch((error) => {

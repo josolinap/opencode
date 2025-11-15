@@ -21,7 +21,8 @@ export namespace Actor {
     properties: {
       userID: string
       workspaceID: string
-      role: UserRole
+      accountID: string
+      role: (typeof UserRole)[number]
     }
   }
 
@@ -66,11 +67,32 @@ export namespace Actor {
     return actor as Extract<Info, { type: T }>
   }
 
+  export const assertAdmin = () => {
+    if (userRole() === "admin") return
+    throw new Error(`Action not allowed. Ask your workspace admin to perform this action.`)
+  }
+
   export function workspace() {
     const actor = use()
     if ("workspaceID" in actor.properties) {
       return actor.properties.workspaceID
     }
     throw new Error(`actor of type "${actor.type}" is not associated with a workspace`)
+  }
+
+  export function account() {
+    const actor = use()
+    if ("accountID" in actor.properties) {
+      return actor.properties.accountID
+    }
+    throw new Error(`actor of type "${actor.type}" is not associated with an account`)
+  }
+
+  export function userID() {
+    return Actor.assert("user").properties.userID
+  }
+
+  export function userRole() {
+    return Actor.assert("user").properties.role
   }
 }
