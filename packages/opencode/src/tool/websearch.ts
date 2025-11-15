@@ -61,6 +61,8 @@ export const WebSearchTool = Tool.define("websearch", {
       .describe("Maximum characters for context string optimized for LLMs (default: 10000)"),
     bypassCache: z.boolean().optional().describe("Bypass web search cache and perform live search"),
     ttlMs: z.number().optional().describe("Cache TTL in milliseconds for results"),
+    summarize: z.boolean().optional().describe("Summarize top results and include a short summary in the response"),
+    summaryCount: z.number().optional().describe("Number of results to summarize (default: 3)"),
   }),
   async execute(params, ctx) {
     const cfg = await Config.get()
@@ -138,15 +140,14 @@ export const WebSearchTool = Tool.define("websearch", {
         if (line.startsWith("data: ")) {
           const data: McpSearchResponse = JSON.parse(line.substring(6))
           if (data.result && data.result.content && data.result.content.length > 0) {
-            let results = data.result.content.map((c) => c.text)
-            if (params.dedupeResults) {
-              const seen = new Set<string>()
-              results = results.filter((r) => {
-                if (seen.has(r)) return false
-                seen.add(r)
-                return true
-              })
-            }
+            const results = data.result.content.map((c) => c.text)
+            const summarizeEnabled = params.summarize ?? true
+            const summaryCount = params.summaryCount ?? 3
+            const summaryText =
+              summarizeEnabled && results.length > 0
+                ? results.slice(0, Math.min(summaryCount, results.length)).join(" ")
+                : ""
+
             const base = {
               output: results[0] ?? "",
               title: `Web search: ${params.query}`,
@@ -166,12 +167,12 @@ export const WebSearchTool = Tool.define("websearch", {
                 },
               }
               const finalMetadata = { ...base.metadata, mvp: mvpPayload }
-              const finalResult = { ...base, metadata: finalMetadata, results }
+              const finalResult = { ...base, metadata: finalMetadata, results, summary: summaryText }
               WebSearchCache.set(params.query, finalResult, params.ttlMs)
               return finalResult
             }
 
-            const finalResult = { ...base, results }
+            const finalResult = { ...base, results, summary: summaryText }
             WebSearchCache.set(params.query, finalResult, params.ttlMs)
             return finalResult
           }
