@@ -3,6 +3,8 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./websearch.txt"
 import { Config } from "../config/config"
 import { Permission } from "../permission"
+import { isWebSearchMVPEnabled } from "../storage/feature-flags"
+import { WebSearchCache } from "../storage/cache/web_search_cache"
 
 const API_CONFIG = {
   BASE_URL: "https://mcp.exa.ai",
@@ -57,6 +59,8 @@ export const WebSearchTool = Tool.define("websearch", {
       .number()
       .optional()
       .describe("Maximum characters for context string optimized for LLMs (default: 10000)"),
+    bypassCache: z.boolean().optional().describe("Bypass web search cache and perform live search"),
+    ttlMs: z.number().optional().describe("Cache TTL in milliseconds for results"),
   }),
   async execute(params, ctx) {
     const cfg = await Config.get()
@@ -93,10 +97,21 @@ export const WebSearchTool = Tool.define("websearch", {
     }
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 25000)
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+    // Cache lookup (optional)
+    const bypassCache = params.bypassCache ?? false
+    if (!bypassCache) {
+      const cached = WebSearchCache.get(params.query)
+      if (cached) {
+        clearTimeout(timeoutId)
+        return cached
+      }
+    }
 
     try {
       const headers: Record<string, string> = {
+        "User-Agent": "Opencode-WebSearch/1.0",
         accept: "application/json, text/event-stream",
         "content-type": "application/json",
       }
@@ -123,11 +138,34 @@ export const WebSearchTool = Tool.define("websearch", {
         if (line.startsWith("data: ")) {
           const data: McpSearchResponse = JSON.parse(line.substring(6))
           if (data.result && data.result.content && data.result.content.length > 0) {
-            return {
-              output: data.result.content[0].text,
+            const results = data.result.content.map((c) => c.text)
+            const base = {
+              output: results[0],
               title: `Web search: ${params.query}`,
               metadata: {},
             }
+
+            if (isWebSearchMVPEnabled()) {
+              const mvpPayload = {
+                credibility_score: 0.5,
+                quotes: [],
+                source_type: "Tier2" as const,
+                source_id: "exa-web-01",
+                corroboration_count: 0,
+                sourceMap: {
+                  claim_key: params.query,
+                  sources: [],
+                },
+              }
+              const finalMetadata = { ...base.metadata, mvp: mvpPayload }
+              const finalResult = { ...base, metadata: finalMetadata, results }
+              WebSearchCache.set(params.query, finalResult, params.ttlMs)
+              return finalResult
+            }
+
+            const finalResult = { ...base, results }
+            WebSearchCache.set(params.query, finalResult, params.ttlMs)
+            return finalResult
           }
         }
       }
