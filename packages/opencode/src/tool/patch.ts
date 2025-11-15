@@ -215,6 +215,7 @@ export const PatchTool = Tool.define("patch", {
       title: summary,
       metadata: {
         diff: totalDiff,
+        summary,
       },
       output: `Patch applied successfully. ${summary}:\n${relativePaths.map((p) => `  ${p}`).join("\n")}`,
     }
