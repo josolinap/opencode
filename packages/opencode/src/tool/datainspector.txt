@@ -1,0 +1,3 @@
+Data Inspector tool for quick stats on CSV/JSON data
+Usage: supply data payload and optional format (csv/json) and sampleRows for detail depth.
+Outputs a concise summary plus details in metadata.

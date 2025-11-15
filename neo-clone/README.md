@@ -57,9 +57,10 @@ A modern, self-hosted AI assistant with an **Enhanced Textual TUI interface**, i
 
 ### 🛠️ **Expanded Skill Library**
 
-- **7 Total Skills** - Including MiniMax Agent and 2 new powerful capabilities
+- **8 Total Skills** - Including MiniMax Agent and 3 new powerful capabilities
 - **file_manager** - Read, analyze, and manage files and directories
 - **web_search** - Search the web, fact-check, and find information
+- **planning** - Create project plans, roadmaps, and step-by-step guides
 - **Enhanced Analysis** - Better understanding of your requests
 
 ### 🧩 **Plugin System**
@@ -88,7 +89,7 @@ A modern, self-hosted AI assistant with an **Enhanced Textual TUI interface**, i
 
 - 🖥️ **Beautiful Enhanced TUI** - Rich, interactive terminal interface with themes
 - 🧠 **Modular Brain Engine** - Intelligent intent parsing and skill routing
-- 🔧 **Dynamic Skills** - Plugin-based skill system with 6 built-in capabilities
+- 🔧 **Dynamic Skills** - Plugin-based skill system with 7 built-in capabilities
 - 💬 **Chat Interface** - Natural conversation with persistent history
 - 🎨 **Theme System** - Dark and light themes with instant switching
 - 🔍 **Message Search** - Find any conversation from your history

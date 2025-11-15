@@ -8,15 +8,12 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "build": "./script/build.ts",
-    "dev": "bun run --conditions=browser ./src/index.ts",
+    "dev": "bun run ./src/index.ts",
     "random": "echo 'Random script updated at $(date)'"
   },
   "bin": {
     "opencode": "./bin/opencode",
     "opencode.cmd": "./bin/opencode.cmd"
-  },
-  "exports": {
-    "./*": "./src/*.ts"
   },
   "devDependencies": {
     "@ai-sdk/amazon-bedrock": "2.2.10",

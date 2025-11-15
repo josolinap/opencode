@@ -4,7 +4,11 @@ import time
 import threading
 import logging
 import json
-import psutil
+# Fix imports with fallbacks
+try:
+    import psutil
+except ImportError:
+    psutil = None
 import queue
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, asdict
@@ -160,9 +164,15 @@ class RealTimeAnalytics:
     def _take_system_snapshot(self):
         """Take a snapshot of current system state"""
         try:
-            cpu_percent = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
+            if psutil is not None:
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+            else:
+                # Fallback values when psutil is not available
+                cpu_percent = 0.0
+                memory = type('Memory', (), {'percent': 0.0})()
+                disk = type('Disk', (), {'percent': 0.0})()
             recent_response_times = list(self.current_metrics['response_times'])[-10:]
             avg_response_time = statistics.mean(recent_response_times) if recent_response_times else 0
             error_rate = self.current_metrics['error_count'] / max(1, self.current_metrics['total_requests'])

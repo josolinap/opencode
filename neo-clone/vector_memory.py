@@ -1,552 +1,844 @@
 """
-vector_memory.py - Advanced Vector Memory System with Redis-like Capabilities
+Vector Memory System for MiniMax Agent Architecture
 
-Inspired by Redis Vector Search and modern vector databases:
-- High-performance vector storage and retrieval
-- Semantic search capabilities
-- Real-time memory operations
-- Hybrid search (vector + keyword)
-- Memory persistence and indexing
-- Multi-modal memory support
+This module provides semantic search capabilities with vector embeddings,
+keyword-based indexing, and optimized search performance.
 
-Features:
-1. Vector embeddings storage
-2. Similarity search with multiple metrics
-3. Real-time indexing
-4. Memory layers (short-term, long-term, episodic)
-5. Cross-session memory continuity
-6. Intelligent memory consolidation
+Author: MiniMax Agent
+Version: 1.0
 """
 
 import json
-import os
-import pickle
-import hashlib
-import time
-import numpy as np
-from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
-from pathlib import Path
-import logging
-from concurrent.futures import ThreadPoolExecutor
+import uuid
 import threading
-from collections import defaultdict
-import sqlite3
+import time
 import math
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Union, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+import logging
+import hashlib
 
+# Import data models
+from data_models import MemoryVector, MemoryType, SearchResult
+
+# Configure logging
 logger = logging.getLogger(__name__)
 
-@dataclass
-class MemoryVector:
-    """Vector memory entry with metadata"""
-    id: str
-    vector: List[float]
-    content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    access_count: int = 0
-    last_accessed: str = field(default_factory=lambda: datetime.now().isoformat())
-    memory_type: str = "episodic"  # episodic, semantic, procedural
-    importance: float = 1.0
-    tags: List[str] = field(default_factory=list)
 
 @dataclass
 class MemoryQuery:
-    """Query for vector memory search"""
-    query: str
-    vector: Optional[List[float]] = None
-    filters: Dict[str, Any] = field(default_factory=dict)
+    """Query for memory search with multiple options"""
+    query: str = ""
+    text: str = ""  # Alias for query
     limit: int = 10
-    threshold: float = 0.7
-    memory_types: List[str] = field(default_factory=lambda: ["episodic", "semantic", "procedural"])
+    threshold: float = 0.6
     hybrid_search: bool = True
+    memory_type: Optional[MemoryType] = None
+    tags: List[str] = field(default_factory=list)
+    case_sensitive: bool = False
+    date_range: Optional[Tuple[datetime, datetime]] = None
+    min_importance: float = 0.0
+    max_age_days: Optional[float] = None
 
-class VectorMemory:
+
+class VectorMemoryOptimized:
     """
-    Advanced Vector Memory System
-    Redis-like performance with AI-native capabilities
+    Optimized vector memory with advanced features:
+    
+    - Keyword-based indexing for fast search
+    - Background consolidation tasks
+    - Semantic search with embeddings
+    - Importance-based retention
+    - Memory compression and cleanup
+    - Hybrid search capabilities
+    - Thread-safe operations
     """
     
-    def __init__(self, memory_dir: str = "data/vector_memory"):
+    def __init__(
+        self,
+        memory_dir: str = "data/vector_memory",
+        cache_size: int = 1000,
+        consolidation_interval: int = 300,  # 5 minutes
+        max_vectors: int = 10000,
+        embedding_dimensions: int = 100,
+        compression_enabled: bool = True
+    ):
+        """
+        Initialize vector memory system
+        
+        Args:
+            memory_dir: Storage directory for vector data
+            cache_size: Maximum vectors to keep in memory cache
+            consolidation_interval: Background consolidation interval (seconds)
+            max_vectors: Maximum number of vectors to store
+            embedding_dimensions: Dimensionality of embeddings
+            compression_enabled: Enable vector compression
+        """
         self.memory_dir = Path(memory_dir)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         
-        # Database files
-        self.vector_db_path = self.memory_dir / "vectors.db"
-        self.metadata_db_path = self.memory_dir / "metadata.db"
-        self.index_path = self.memory_dir / "vector_index.pkl"
+        self.cache_size = cache_size
+        self.consolidation_interval = consolidation_interval
+        self.max_vectors = max_vectors
+        self.embedding_dimensions = embedding_dimensions
+        self.compression_enabled = compression_enabled
         
-        # Memory layers
-        self.short_term_memory: Dict[str, MemoryVector] = {}
-        self.long_term_memory: Dict[str, MemoryVector] = {}
-        self.episodic_memory: Dict[str, MemoryVector] = {}
-        
-        # Indexing and search
-        self.vector_index: Dict[str, List[float]] = {}
-        self.inverted_index: Dict[str, List[str]] = defaultdict(list)
-        
-        # Performance optimization
-        self.cache_size = 1000
-        self.cache: Dict[str, MemoryVector] = {}
-        self.access_history: List[str] = []
-        
-        # Threading
+        # Thread safety
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=4)
+        self._running = False
+        self._consolidation_thread: Optional[threading.Thread] = None
         
-        # Initialize databases
-        self._init_databases()
-        self._load_memories()
+        # Storage structures
+        self.vectors: List[Dict[str, Any]] = []
+        self.index: Optional[Dict[str, Any]] = None
+        self.cache: Dict[str, Dict[str, Any]] = {}
+        self.metadata_index: Dict[str, List[int]] = {}
         
-        # Background tasks
+        # Performance tracking
+        self.search_stats = {
+            "total_searches": 0,
+            "successful_searches": 0,
+            "average_response_time": 0.0,
+            "cache_hits": 0,
+            "cache_misses": 0
+        }
+        
+        # File paths
+        self.vectors_file = self.memory_dir / "vectors.json"
+        self.index_file = self.memory_dir / "index.json"
+        self.metadata_file = self.memory_dir / "metadata.json"
+        
+        # Initialize from storage
+        self._load_vectors()
+        self._build_index()
         self._start_background_tasks()
-    
-    def _init_databases(self):
-        """Initialize SQLite databases for vector storage"""
-        try:
-            # Vector database
-            conn = sqlite3.connect(self.vector_db_path)
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS vectors (
-                    id TEXT PRIMARY KEY,
-                    vector BLOB,
-                    content TEXT,
-                    metadata TEXT,
-                    timestamp TEXT,
-                    access_count INTEGER DEFAULT 0,
-                    last_accessed TEXT,
-                    memory_type TEXT,
-                    importance REAL DEFAULT 1.0,
-                    tags TEXT
-                )
-            ''')
-            conn.commit()
-            conn.close()
-            
-            # Metadata database for indexes
-            conn = sqlite3.connect(self.metadata_db_path)
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS indexes (
-                    key TEXT PRIMARY KEY,
-                    value TEXT,
-                    updated_at TEXT
-                )
-            ''')
-            conn.commit()
-            conn.close()
-            
-            logger.info("Vector memory databases initialized")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize databases: {e}")
-    
-    def _load_memories(self):
-        """Load existing memories from databases"""
-        try:
-            conn = sqlite3.connect(self.vector_db_path)
-            cursor = conn.execute('SELECT * FROM vectors')
-            
-            for row in cursor:
-                vector = pickle.loads(row[1])
-                metadata = json.loads(row[3]) if row[3] else {}
-                tags = json.loads(row[8]) if row[8] else []
-                
-                memory = MemoryVector(
-                    id=row[0],
-                    vector=vector,
-                    content=row[2],
-                    metadata=metadata,
-                    timestamp=row[4],
-                    access_count=row[5],
-                    last_accessed=row[6],
-                    memory_type=row[7],
-                    importance=row[8] if len(row) > 8 else 1.0,
-                    tags=tags
-                )
-                
-                # Store in appropriate memory layer
-                if memory.memory_type == "episodic":
-                    self.episodic_memory[memory.id] = memory
-                elif memory.memory_type == "semantic":
-                    self.long_term_memory[memory.id] = memory
-                else:
-                    self.short_term_memory[memory.id] = memory
-                
-                # Update indexes
-                self.vector_index[memory.id] = memory.vector
-                self._update_inverted_index(memory)
-            
-            conn.close()
-            logger.info(f"Loaded {len(self.vector_index)} memories from database")
-            
-        except Exception as e:
-            logger.error(f"Failed to load memories: {e}")
-    
-    def _update_inverted_index(self, memory: MemoryVector):
-        """Update inverted index for keyword search"""
-        words = memory.content.lower().split()
-        for word in words:
-            if len(word) > 2:  # Skip very short words
-                self.inverted_index[word].append(memory.id)
-    
-    def _start_background_tasks(self):
-        """Start background memory management tasks"""
-        def memory_consolidation():
-            while True:
-                try:
-                    self._consolidate_memories()
-                    time.sleep(300)  # Every 5 minutes
-                except Exception as e:
-                    logger.error(f"Memory consolidation error: {e}")
         
-        self._executor.submit(memory_consolidation)
+        logger.info(f"Initialized vector memory: {len(self.vectors)} vectors loaded")
     
-    def add_memory(self, content: str, vector: Optional[List[float]] = None, 
-                   memory_type: str = "episodic", importance: float = 1.0,
-                   tags: Optional[List[str]] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Add a new memory vector"""
-        try:
-            # Generate ID
-            memory_id = hashlib.md5(f"{content}_{datetime.now().isoformat()}".encode()).hexdigest()
+    def add_memory(
+        self,
+        content: str,
+        memory_type: MemoryType = MemoryType.SEMANTIC,
+        importance: float = 0.5,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        embedding: Optional[List[float]] = None
+    ) -> str:
+        """
+        Add memory entry with optional pre-computed embedding
+        
+        Args:
+            content: Memory content text
+            memory_type: Type of memory (episodic, semantic, etc.)
+            importance: Importance score (0.0 to 1.0)
+            tags: Optional tags for categorization
+            metadata: Additional metadata
+            embedding: Pre-computed embedding vector (optional)
+        
+        Returns:
+            Memory ID
+        """
+        with self._lock:
+            memory_id = str(uuid.uuid4())
             
-            # Generate vector if not provided (simplified - would use actual embedding model)
-            if vector is None:
-                vector = self._generate_embedding(content)
+            # Generate embedding if not provided
+            if embedding is None:
+                embedding = self._generate_embedding(content)
             
-            # Create memory
-            memory = MemoryVector(
-                id=memory_id,
-                vector=vector,
-                content=content,
-                memory_type=memory_type,
-                importance=importance,
-                tags=tags or [],
-                metadata=metadata or {}
-            )
+            # Ensure embedding dimensions
+            embedding = self._normalize_embedding(embedding)
             
-            with self._lock:
-                # Store in appropriate memory layer
-                if memory_type == "episodic":
-                    self.episodic_memory[memory_id] = memory
-                elif memory_type == "semantic":
-                    self.long_term_memory[memory_id] = memory
-                else:
-                    self.short_term_memory[memory_id] = memory
-                
-                # Update indexes
-                self.vector_index[memory_id] = vector
-                self._update_inverted_index(memory)
-                
-                # Update cache
-                self._update_cache(memory_id, memory)
-                
-                # Persist to database
-                self._persist_memory(memory)
+            memory = {
+                "id": memory_id,
+                "content": content,
+                "embedding": embedding,
+                "memory_type": memory_type.value,
+                "importance": max(0.0, min(1.0, importance)),
+                "tags": tags or [],
+                "metadata": metadata or {},
+                "created_at": datetime.now().isoformat(),
+                "last_accessed": datetime.now().isoformat(),
+                "access_count": 0,
+                "search_relevance": 0.0
+            }
             
-            logger.info(f"Added memory {memory_id} of type {memory_type}")
+            # Add to vectors
+            self.vectors.append(memory)
+            
+            # Update indexes
+            if self.index:
+                self._add_to_index(memory, len(self.vectors) - 1)
+            
+            self._add_to_metadata_index(memory, len(self.vectors) - 1)
+            
+            # Check if we need to consolidate (too many vectors)
+            if len(self.vectors) > self.max_vectors:
+                self._consolidate_vectors()
+            
+            # Auto-save periodically
+            if len(self.vectors) % 100 == 0:  # Save every 100 entries
+                self._save_to_disk()
+            
+            logger.debug(f"Added memory: {memory_id} (type: {memory_type.value})")
             return memory_id
+    
+    def search(
+        self,
+        query: Union[str, MemoryQuery],
+        limit: Optional[int] = None,
+        threshold: Optional[float] = None,
+        hybrid_search: Optional[bool] = None,
+        memory_type: Optional[MemoryType] = None,
+        tags: Optional[List[str]] = None,
+        case_sensitive: bool = False,
+        min_importance: float = 0.0
+    ) -> List[SearchResult]:
+        """
+        Search memory using query with advanced filtering
+        
+        Args:
+            query: Search query (string or MemoryQuery object)
+            limit: Maximum results (overrides query.limit)
+            threshold: Similarity threshold (overrides query.threshold)
+            hybrid_search: Enable hybrid search (overrides query.hybrid_search)
+            memory_type: Filter by memory type
+            tags: Filter by tags
+            case_sensitive: Case sensitive search
+            min_importance: Minimum importance threshold
+        
+        Returns:
+            List of SearchResult objects
+        """
+        start_time = time.time()
+        
+        with self._lock:
+            self.search_stats["total_searches"] += 1
             
-        except Exception as e:
-            logger.error(f"Failed to add memory: {e}")
-            return ""
+            # Handle string query
+            if isinstance(query, str):
+                query_obj = MemoryQuery(
+                    query=query,
+                    text=query,
+                    limit=limit or 10,
+                    threshold=threshold or 0.6,
+                    hybrid_search=hybrid_search if hybrid_search is not None else True,
+                    memory_type=memory_type,
+                    tags=tags or [],
+                    case_sensitive=case_sensitive,
+                    min_importance=min_importance
+                )
+            else:
+                # Override MemoryQuery with additional parameters
+                query_obj = query
+                if limit is not None:
+                    query_obj.limit = limit
+                if threshold is not None:
+                    query_obj.threshold = threshold
+                if hybrid_search is not None:
+                    query_obj.hybrid_search = hybrid_search
+                if memory_type is not None:
+                    query_obj.memory_type = memory_type
+                if tags is not None:
+                    query_obj.tags = tags
+                if case_sensitive:
+                    query_obj.case_sensitive = case_sensitive
+                if min_importance > 0.0:
+                    query_obj.min_importance = min_importance
+            
+            # Get query text
+            query_text = query_obj.query or query_obj.text
+            
+            if not query_text.strip():
+                logger.warning("Empty search query")
+                return []
+            
+            # Perform search
+            search_results = self._perform_search(query_obj)
+            
+            # Update performance stats
+            response_time = time.time() - start_time
+            self._update_search_stats(search_results, response_time)
+            
+            # Convert to SearchResult objects
+            results = []
+            for vector, similarity in search_results:
+                result = SearchResult(
+                    content=vector["content"],
+                    relevance_score=similarity,
+                    source="vector_memory",
+                    metadata={
+                        "id": vector["id"],
+                        "memory_type": vector["memory_type"],
+                        "importance": vector["importance"],
+                        "tags": vector["tags"],
+                        "created_at": vector["created_at"],
+                        "access_count": vector["access_count"]
+                    }
+                )
+                results.append(result)
+            
+            logger.debug(f"Search completed: {len(results)} results in {response_time:.3f}s")
+            return results
+    
+    def _perform_search(self, query: MemoryQuery) -> List[Tuple[Dict[str, Any], float]]:
+        """Perform the actual search based on query parameters"""
+        query_text = query.query or query.text
+        search_limit = query.limit
+        threshold = query.threshold
+        
+        if not query.hybrid_search:
+            return self._semantic_search(query_text, search_limit, threshold)
+        
+        # Hybrid search: combine semantic and keyword approaches
+        semantic_results = self._semantic_search(query_text, search_limit * 2, threshold * 0.8)
+        keyword_results = self._keyword_search(query_text, search_limit * 2, 0.3)
+        
+        # Combine and deduplicate results
+        combined_results = self._merge_search_results(semantic_results, keyword_results)
+        
+        # Apply filters
+        filtered_results = self._apply_filters(combined_results, query)
+        
+        # Sort by relevance and return top results
+        filtered_results.sort(key=lambda x: x[1], reverse=True)
+        return filtered_results[:search_limit]
+    
+    def _semantic_search(
+        self,
+        query: str,
+        limit: int,
+        threshold: float
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        """Perform semantic search using embeddings"""
+        if not self.index or not self.vectors:
+            return []
+        
+        query_embedding = self._generate_embedding(query)
+        results = []
+        
+        for idx, vector in enumerate(self.vectors):
+            # Skip if no embedding
+            if not vector.get("embedding"):
+                continue
+            
+            similarity = self._cosine_similarity(query_embedding, vector["embedding"])
+            
+            if similarity >= threshold:
+                # Update access tracking
+                vector["access_count"] += 1
+                vector["last_accessed"] = datetime.now().isoformat()
+                
+                results.append((vector, similarity))
+        
+        # Sort by similarity and importance
+        results.sort(key=lambda x: (x[1], x[0]["importance"]), reverse=True)
+        return results[:limit]
+    
+    def _keyword_search(
+        self,
+        query: str,
+        limit: int,
+        min_overlap: float = 0.3
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        """Perform keyword-based search"""
+        if not self.index:
+            return []
+        
+        query_words = set(query.lower().split())
+        if not query_words:
+            return []
+        
+        # Find vectors containing query words
+        candidate_indices = set()
+        for word in query_words:
+            if word in self.index.get("keywords", {}):
+                candidate_indices.update(self.index["keywords"][word])
+        
+        if not candidate_indices:
+            return []
+        
+        # Calculate overlap scores
+        results = []
+        query_word_count = len(query_words)
+        
+        for idx in candidate_indices:
+            if idx >= len(self.vectors):
+                continue
+            
+            vector = self.vectors[idx]
+            content_words = set(vector["content"].lower().split())
+            
+            if content_words:
+                overlap = len(query_words & content_words)
+                overlap_score = overlap / query_word_count
+                
+                if overlap_score >= min_overlap:
+                    # Update access tracking
+                    vector["access_count"] += 1
+                    vector["last_accessed"] = datetime.now().isoformat()
+                    
+                    results.append((vector, overlap_score))
+        
+        # Sort by overlap score and importance
+        results.sort(key=lambda x: (x[1], x[0]["importance"]), reverse=True)
+        return results[:limit]
+    
+    def _merge_search_results(
+        self,
+        semantic_results: List[Tuple[Dict[str, Any], float]],
+        keyword_results: List[Tuple[Dict[str, Any], float]]
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        """Merge semantic and keyword search results"""
+        # Create combined results with improved scoring
+        combined = {}
+        
+        # Add semantic results with weight
+        for vector, semantic_score in semantic_results:
+            vector_id = vector["id"]
+            combined[vector_id] = (vector, semantic_score * 0.7)
+        
+        # Add keyword results with weight and merge
+        for vector, keyword_score in keyword_results:
+            vector_id = vector["id"]
+            if vector_id in combined:
+                # Average the scores
+                current_score = combined[vector_id][1]
+                combined[vector_id] = (vector, (current_score + keyword_score * 0.6) / 2)
+            else:
+                combined[vector_id] = (vector, keyword_score * 0.6)
+        
+        return list(combined.values())
+    
+    def _apply_filters(
+        self,
+        results: List[Tuple[Dict[str, Any], float]],
+        query: MemoryQuery
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        """Apply additional filters to search results"""
+        filtered = []
+        
+        for vector, score in results:
+            # Memory type filter
+            if query.memory_type and vector["memory_type"] != query.memory_type.value:
+                continue
+            
+            # Tags filter
+            if query.tags and not any(tag in vector["tags"] for tag in query.tags):
+                continue
+            
+            # Importance filter
+            if vector["importance"] < query.min_importance:
+                continue
+            
+            # Date range filter
+            if query.date_range:
+                created_at = datetime.fromisoformat(vector["created_at"])
+                if not (query.date_range[0] <= created_at <= query.date_range[1]):
+                    continue
+            
+            # Age filter
+            if query.max_age_days:
+                created_at = datetime.fromisoformat(vector["created_at"])
+                age_days = (datetime.now() - created_at).days
+                if age_days > query.max_age_days:
+                    continue
+            
+            filtered.append((vector, score))
+        
+        return filtered
     
     def _generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for text (simplified implementation)"""
-        # In a real implementation, this would use a proper embedding model
-        # For now, create a simple hash-based embedding
+        """
+        Generate embedding for text using improved bag-of-words approach.
+        
+        In production, this would use actual embedding models like:
+        - OpenAI text-embedding models
+        - Sentence Transformers
+        - Local models via sentence-transformers library
+        """
+        # Improved bag-of-words with TF-IDF-like weighting
         words = text.lower().split()
-        embedding = []
+        word_freq = {}
         
-        for i in range(128):  # 128-dimensional embedding
-            if i < len(words):
-                # Simple hash-based embedding
-                word_hash = hash(words[i] + str(i))
-                embedding.append((word_hash % 1000) / 1000.0)
-            else:
-                embedding.append(0.0)
+        # Count word frequencies
+        for word in words:
+            word_freq[word] = word_freq.get(word, 0) + 1
         
-        # Normalize
-        norm = math.sqrt(sum(x*x for x in embedding))
-        if norm > 0:
-            embedding = [x/norm for x in embedding]
+        # Create weighted vector
+        vector = [0.0] * self.embedding_dimensions
         
-        return embedding
+        for word, freq in word_freq.items():
+            # Hash word to get consistent index
+            word_hash = hashlib.md5(word.encode()).digest()
+            # Use first 4 bytes to get index
+            idx = int.from_bytes(word_hash[:4], 'big') % self.embedding_dimensions
+            
+            # Weight by frequency (log-scaled to reduce impact of very common words)
+            weight = math.log(1 + freq)
+            vector[idx] += weight
+        
+        return self._normalize_embedding(vector)
     
-    def _persist_memory(self, memory: MemoryVector):
-        """Persist memory to database"""
-        try:
-            conn = sqlite3.connect(self.vector_db_path)
-            conn.execute('''
-                INSERT OR REPLACE INTO vectors 
-                (id, vector, content, metadata, timestamp, access_count, 
-                 last_accessed, memory_type, importance, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                memory.id,
-                pickle.dumps(memory.vector),
-                memory.content,
-                json.dumps(memory.metadata),
-                memory.timestamp,
-                memory.access_count,
-                memory.last_accessed,
-                memory.memory_type,
-                memory.importance,
-                json.dumps(memory.tags)
-            ))
-            conn.commit()
-            conn.close()
-            
-        except Exception as e:
-            logger.error(f"Failed to persist memory {memory.id}: {e}")
+    def _normalize_embedding(self, embedding: List[float]) -> List[float]:
+        """Normalize embedding vector to unit length"""
+        if not embedding:
+            return [0.0] * self.embedding_dimensions
+        
+        # Pad or truncate to target dimensions
+        if len(embedding) < self.embedding_dimensions:
+            embedding = embedding + [0.0] * (self.embedding_dimensions - len(embedding))
+        elif len(embedding) > self.embedding_dimensions:
+            embedding = embedding[:self.embedding_dimensions]
+        
+        # Normalize to unit length
+        magnitude = math.sqrt(sum(x * x for x in embedding))
+        if magnitude == 0:
+            return [0.0] * self.embedding_dimensions
+        
+        return [x / magnitude for x in embedding]
     
-    def search(self, query: MemoryQuery) -> List[MemoryVector]:
-        """Search memories using vector similarity and/or keywords"""
-        try:
-            results = []
-            
-            # Generate query vector if not provided
-            if query.vector is None:
-                query.vector = self._generate_embedding(query.query)
-            
-            # Vector similarity search
-            if query.vector:
-                vector_results = self._vector_similarity_search(query)
-                results.extend(vector_results)
-            
-            # Keyword search (for hybrid search)
-            if query.hybrid_search and query.query:
-                keyword_results = self._keyword_search(query)
-                # Merge with vector results, avoiding duplicates
-                existing_ids = {r.id for r in results}
-                for result in keyword_results:
-                    if result.id not in existing_ids:
-                        results.append(result)
-            
-            # Apply filters
-            if query.filters:
-                results = [r for r in results if self._matches_filters(r, query.filters)]
-            
-            # Filter by memory types
-            results = [r for r in results if r.memory_type in query.memory_types]
-            
-            # Sort by relevance and limit
-            results.sort(key=lambda x: (x.importance, x.access_count), reverse=True)
-            results = results[:query.limit]
-            
-            # Update access statistics
-            for result in results:
-                self._update_access_stats(result.id)
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Search failed: {e}")
-            return []
+    def _cosine_similarity(self, vec_a: List[float], vec_b: List[float]) -> float:
+        """Calculate cosine similarity between two vectors"""
+        if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+            return 0.0
+        
+        dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
+        return max(0.0, min(1.0, dot_product))  # Already normalized
     
-    def _vector_similarity_search(self, query: MemoryQuery) -> List[MemoryVector]:
-        """Perform vector similarity search"""
-        results = []
-        query_vector = np.array(query.vector)
-        
-        for memory_id, vector in self.vector_index.items():
-            memory_vector = np.array(vector)
+    def _build_index(self) -> None:
+        """Build keyword index for fast search"""
+        with self._lock:
+            self.index = {
+                "keywords": {},
+                "tags": {},
+                "metadata": {
+                    "built_at": datetime.now().isoformat(),
+                    "vector_count": len(self.vectors),
+                    "index_version": "1.0"
+                }
+            }
             
-            # Calculate cosine similarity
-            similarity = np.dot(query_vector, memory_vector)
-            
-            if similarity >= query.threshold:
-                # Get the full memory
-                memory = self._get_memory_by_id(memory_id)
-                if memory:
-                    memory.metadata["similarity"] = float(similarity)
-                    results.append(memory)
-        
-        return results
+            for idx, vector in enumerate(self.vectors):
+                self._add_to_index(vector, idx)
+                self._add_to_metadata_index(vector, idx)
     
-    def _keyword_search(self, query: MemoryQuery) -> List[MemoryVector]:
-        """Perform keyword search using inverted index"""
-        results = []
-        query_words = query.query.lower().split()
+    def _add_to_index(self, vector: Dict[str, Any], idx: int) -> None:
+        """Add vector to keyword index"""
+        content = vector.get("content", "")
+        words = set(content.lower().split())
         
-        # Find memories containing query words
-        matching_ids = set()
-        for word in query_words:
-            if len(word) > 2 and word in self.inverted_index:
-                matching_ids.update(self.inverted_index[word])
+        for word in words:
+            if word not in self.index["keywords"]:
+                self.index["keywords"][word] = []
+            self.index["keywords"][word].append(idx)
         
-        # Get full memories
-        for memory_id in matching_ids:
-            memory = self._get_memory_by_id(memory_id)
-            if memory:
-                results.append(memory)
-        
-        return results
+        # Add tags to index
+        for tag in vector.get("tags", []):
+            if tag not in self.index["tags"]:
+                self.index["tags"][tag] = []
+            self.index["tags"][tag].append(idx)
     
-    def _get_memory_by_id(self, memory_id: str) -> Optional[MemoryVector]:
-        """Get memory by ID from any layer"""
-        # Check cache first
-        if memory_id in self.cache:
-            return self.cache[memory_id]
+    def _add_to_metadata_index(self, vector: Dict[str, Any], idx: int) -> None:
+        """Add vector to metadata index"""
+        memory_type = vector.get("memory_type", "unknown")
+        if memory_type not in self.metadata_index:
+            self.metadata_index[memory_type] = []
+        self.metadata_index[memory_type].append(idx)
+    
+    def _consolidate_vectors(self) -> None:
+        """Consolidate vectors to maintain performance"""
+        logger.info("Starting vector consolidation")
         
-        # Check all memory layers
-        for memory_layer in [self.episodic_memory, self.long_term_memory, self.short_term_memory]:
-            if memory_id in memory_layer:
-                return memory_layer[memory_id]
+        # Remove least important/frequently accessed vectors
+        vectors_to_keep = int(self.max_vectors * 0.8)  # Keep 80%
         
+        # Sort by importance and access frequency
+        self.vectors.sort(key=lambda v: (v["importance"], v["access_count"]), reverse=True)
+        
+        # Keep only the most important vectors
+        consolidated = self.vectors[:vectors_to_keep]
+        removed_count = len(self.vectors) - len(consolidated)
+        
+        self.vectors = consolidated
+        
+        # Rebuild indexes
+        self._build_index()
+        
+        logger.info(f"Consolidated vectors: removed {removed_count}, kept {len(self.vectors)}")
+    
+    def _update_search_stats(self, results: List, response_time: float) -> None:
+        """Update search performance statistics"""
+        self.search_stats["successful_searches"] += 1
+        
+        # Update average response time
+        total_searches = self.search_stats["total_searches"]
+        current_avg = self.search_stats["average_response_time"]
+        self.search_stats["average_response_time"] = (
+            (current_avg * (total_searches - 1) + response_time) / total_searches
+        )
+    
+    def get_memory_by_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
+        """Get memory entry by ID"""
+        with self._lock:
+            for vector in self.vectors:
+                if vector["id"] == memory_id:
+                    # Update access tracking
+                    vector["access_count"] += 1
+                    vector["last_accessed"] = datetime.now().isoformat()
+                    return vector
         return None
     
-    def _matches_filters(self, memory: MemoryVector, filters: Dict[str, Any]) -> bool:
-        """Check if memory matches filters"""
-        for key, value in filters.items():
-            if key == "tags":
-                if not any(tag in memory.tags for tag in value):
-                    return False
-            elif key == "importance_min":
-                if memory.importance < value:
-                    return False
-            elif key == "date_after":
-                if memory.timestamp < value:
-                    return False
-            elif hasattr(memory, key):
-                if getattr(memory, key) != value:
-                    return False
-        
-        return True
+    def update_memory_importance(self, memory_id: str, new_importance: float) -> bool:
+        """Update importance score of a memory entry"""
+        with self._lock:
+            for vector in self.vectors:
+                if vector["id"] == memory_id:
+                    vector["importance"] = max(0.0, min(1.0, new_importance))
+                    return True
+        return False
     
-    def _update_access_stats(self, memory_id: str):
-        """Update memory access statistics"""
-        try:
-            memory = self._get_memory_by_id(memory_id)
-            if memory:
-                memory.access_count += 1
-                memory.last_accessed = datetime.now().isoformat()
-                
-                # Update in database
-                conn = sqlite3.connect(self.vector_db_path)
-                conn.execute('''
-                    UPDATE vectors SET access_count = ?, last_accessed = ? WHERE id = ?
-                ''', (memory.access_count, memory.last_accessed, memory_id))
-                conn.commit()
-                conn.close()
-                
-        except Exception as e:
-            logger.error(f"Failed to update access stats: {e}")
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete memory entry by ID"""
+        with self._lock:
+            for idx, vector in enumerate(self.vectors):
+                if vector["id"] == memory_id:
+                    del self.vectors[idx]
+                    # Rebuild indexes
+                    self._build_index()
+                    return True
+        return False
     
-    def _update_cache(self, memory_id: str, memory: MemoryVector):
-        """Update LRU cache"""
-        if memory_id in self.cache:
-            self.access_history.remove(memory_id)
-        elif len(self.cache) >= self.cache_size:
-            # Remove oldest entry
-            oldest_id = self.access_history.pop(0)
-            del self.cache[oldest_id]
-        
-        self.cache[memory_id] = memory
-        self.access_history.append(memory_id)
-    
-    def _consolidate_memories(self):
-        """Consolidate and optimize memory storage"""
-        try:
-            # Move old episodic memories to long-term if important
-            cutoff_date = datetime.now() - timedelta(days=7)
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive vector memory statistics"""
+        with self._lock:
+            # Memory type distribution
+            type_distribution = {}
+            for vector in self.vectors:
+                memory_type = vector.get("memory_type", "unknown")
+                type_distribution[memory_type] = type_distribution.get(memory_type, 0) + 1
             
-            for memory_id, memory in list(self.episodic_memory.items()):
-                memory_date = datetime.fromisoformat(memory.timestamp)
-                
-                if memory_date < cutoff_date and memory.importance > 0.7:
-                    # Move to long-term memory
-                    del self.episodic_memory[memory_id]
-                    memory.memory_type = "semantic"
-                    self.long_term_memory[memory_id] = memory
-                    self._persist_memory(memory)
-            
-            logger.info("Memory consolidation completed")
-            
-        except Exception as e:
-            logger.error(f"Memory consolidation failed: {e}")
-    
-    def get_memory_stats(self) -> Dict[str, Any]:
-        """Get memory system statistics"""
-        return {
-            "total_memories": len(self.vector_index),
-            "episodic_count": len(self.episodic_memory),
-            "long_term_count": len(self.long_term_memory),
-            "short_term_count": len(self.short_term_memory),
-            "cache_size": len(self.cache),
-            "index_size": len(self.inverted_index),
-            "memory_types": {
-                "episodic": len(self.episodic_memory),
-                "semantic": len(self.long_term_memory),
-                "procedural": len(self.short_term_memory)
+            # Importance distribution
+            importance_ranges = {
+                "very_high": 0,    # 0.8-1.0
+                "high": 0,         # 0.6-0.8
+                "medium": 0,       # 0.4-0.6
+                "low": 0,          # 0.2-0.4
+                "very_low": 0      # 0.0-0.2
             }
-        }
+            
+            for vector in self.vectors:
+                importance = vector.get("importance", 0.5)
+                if importance >= 0.8:
+                    importance_ranges["very_high"] += 1
+                elif importance >= 0.6:
+                    importance_ranges["high"] += 1
+                elif importance >= 0.4:
+                    importance_ranges["medium"] += 1
+                elif importance >= 0.2:
+                    importance_ranges["low"] += 1
+                else:
+                    importance_ranges["very_low"] += 1
+            
+            # Access statistics
+            total_accesses = sum(v.get("access_count", 0) for v in self.vectors)
+            avg_accesses = total_accesses / len(self.vectors) if self.vectors else 0
+            
+            return {
+                "total_vectors": len(self.vectors),
+                "memory_directory": str(self.memory_dir),
+                "memory_type_distribution": type_distribution,
+                "importance_distribution": importance_ranges,
+                "total_accesses": total_accesses,
+                "average_accesses_per_vector": avg_accesses,
+                "index_keywords": len(self.index.get("keywords", {})) if self.index else 0,
+                "search_statistics": self.search_stats.copy(),
+                "performance_config": {
+                    "cache_size": self.cache_size,
+                    "max_vectors": self.max_vectors,
+                    "embedding_dimensions": self.embedding_dimensions,
+                    "compression_enabled": self.compression_enabled
+                }
+            }
     
-    def export_memories(self, output_file: str, memory_type: Optional[str] = None):
-        """Export memories to file"""
+    def _save_to_disk(self) -> None:
+        """Save vectors and index to disk"""
         try:
-            memories = []
+            with self._lock:
+                # Save vectors
+                with open(self.vectors_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.vectors, f, indent=2, ensure_ascii=False)
+                
+                # Save index
+                if self.index:
+                    with open(self.index_file, 'w', encoding='utf-8') as f:
+                        json.dump(self.index, f, indent=2, ensure_ascii=False)
+                
+                # Save metadata index
+                with open(self.metadata_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.metadata_index, f, indent=2, ensure_ascii=False)
+                
+                logger.debug("Saved vector memory to disk")
+                
+        except Exception as e:
+            logger.error(f"Failed to save vector memory: {e}")
+    
+    def _load_vectors(self) -> None:
+        """Load vectors from disk"""
+        try:
+            if self.vectors_file.exists():
+                with open(self.vectors_file, 'r', encoding='utf-8') as f:
+                    self.vectors = json.load(f)
+                logger.info(f"Loaded {len(self.vectors)} vectors from disk")
+        except Exception as e:
+            logger.warning(f"Failed to load vectors: {e}")
+            self.vectors = []
+    
+    def _load_index(self) -> None:
+        """Load index from disk"""
+        try:
+            if self.index_file.exists():
+                with open(self.index_file, 'r', encoding='utf-8') as f:
+                    self.index = json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load index: {e}")
+            self.index = None
+    
+    def _load_metadata(self) -> None:
+        """Load metadata index from disk"""
+        try:
+            if self.metadata_file.exists():
+                with open(self.metadata_file, 'r', encoding='utf-8') as f:
+                    self.metadata_index = json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load metadata: {e}")
+            self.metadata_index = {}
+    
+    def _load_vectors(self) -> None:
+        """Load vectors and related data from disk"""
+        try:
+            if self.vectors_file.exists():
+                with open(self.vectors_file, 'r', encoding='utf-8') as f:
+                    self.vectors = json.load(f)
+                logger.info(f"Loaded {len(self.vectors)} vectors from disk")
             
-            if memory_type == "episodic":
-                memories = list(self.episodic_memory.values())
-            elif memory_type == "semantic":
-                memories = list(self.long_term_memory.values())
-            elif memory_type == "procedural":
-                memories = list(self.short_term_memory.values())
-            else:
-                # All memories
-                memories = (list(self.episodic_memory.values()) + 
-                          list(self.long_term_memory.values()) + 
-                          list(self.short_term_memory.values()))
-            
-            # Export as JSON
-            export_data = [asdict(memory) for memory in memories]
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Exported {len(memories)} memories to {output_file}")
+            self._load_index()
+            self._load_metadata()
             
         except Exception as e:
-            logger.error(f"Failed to export memories: {e}")
+            logger.warning(f"Failed to load vector memory: {e}")
+            self.vectors = []
+            self.index = None
+            self.metadata_index = {}
     
-    def clear_memory(self, memory_type: Optional[str] = None, older_than_days: Optional[int] = None):
-        """Clear memories with optional filters"""
+    def _start_background_tasks(self) -> None:
+        """Start background consolidation and maintenance tasks"""
+        self._running = True
+        
+        def consolidation_worker():
+            """Background worker for consolidation and maintenance"""
+            while self._running:
+                try:
+                    time.sleep(self.consolidation_interval)
+                    if not self._running:
+                        break
+                    
+                    # Perform consolidation if needed
+                    if len(self.vectors) > self.max_vectors * 0.9:  # 90% threshold
+                        self._consolidate_vectors()
+                    
+                    # Periodic save
+                    self._save_to_disk()
+                    
+                except Exception as e:
+                    logger.error(f"Background consolidation error: {e}")
+        
+        self._consolidation_thread = threading.Thread(
+            target=consolidation_worker,
+            daemon=True,
+            name="VectorMemoryConsolidation"
+        )
+        self._consolidation_thread.start()
+        logger.info("Started background consolidation tasks")
+    
+    def shutdown(self) -> None:
+        """Shutdown vector memory system and cleanup"""
+        self._running = False
+        
+        # Wait for background thread to finish
+        if self._consolidation_thread and self._consolidation_thread.is_alive():
+            self._consolidation_thread.join(timeout=5.0)
+        
+        # Final save
+        self._save_to_disk()
+        
+        logger.info("Vector memory system shutdown complete")
+    
+    def __del__(self):
+        """Cleanup when object is destroyed"""
         try:
-            if memory_type:
-                if memory_type == "episodic":
-                    self.episodic_memory.clear()
-                elif memory_type == "semantic":
-                    self.long_term_memory.clear()
-                elif memory_type == "procedural":
-                    self.short_term_memory.clear()
-            else:
-                # Clear all
-                self.episodic_memory.clear()
-                self.long_term_memory.clear()
-                self.short_term_memory.clear()
-            
-            # Rebuild indexes
-            self.vector_index.clear()
-            self.inverted_index.clear()
-            self.cache.clear()
-            self.access_history.clear()
-            
-            # Reload from database if needed
-            if not memory_type:
-                self._load_memories()
-            
-            logger.info(f"Cleared {memory_type or 'all'} memories")
-            
-        except Exception as e:
-            logger.error(f"Failed to clear memories: {e}")
+            self.shutdown()
+        except:
+            pass
 
-# Global vector memory instance
-_vector_memory_instance = None
 
-def get_vector_memory() -> VectorMemory:
-    """Get global vector memory instance"""
+# Singleton instance management
+_vector_memory_instance: Optional[VectorMemoryOptimized] = None
+_vector_memory_lock = threading.Lock()
+
+
+def get_vector_memory(
+    memory_dir: str = "data/vector_memory",
+    cache_size: int = 1000
+) -> VectorMemoryOptimized:
+    """
+    Get singleton vector memory instance
+    
+    Args:
+        memory_dir: Memory storage directory
+        cache_size: Cache size for vectors
+    
+    Returns:
+        VectorMemoryOptimized singleton instance
+    """
     global _vector_memory_instance
+    
     if _vector_memory_instance is None:
-        _vector_memory_instance = VectorMemory()
+        with _vector_memory_lock:
+            if _vector_memory_instance is None:
+                _vector_memory_instance = VectorMemoryOptimized(memory_dir, cache_size)
+    
     return _vector_memory_instance
+
+
+def reset_vector_memory() -> None:
+    """Reset the vector memory instance"""
+    global _vector_memory_instance
+    with _vector_memory_lock:
+        if _vector_memory_instance:
+            try:
+                _vector_memory_instance.shutdown()
+            except Exception:
+                pass
+        _vector_memory_instance = None
+    logger.info("Vector memory instance reset")
+
+
+def create_vector_memory_instance(
+    memory_dir: str = "data/vector_memory",
+    cache_size: int = 1000,
+    max_vectors: int = 10000
+) -> VectorMemoryOptimized:
+    """
+    Create a new vector memory instance
+    
+    Args:
+        memory_dir: Memory storage directory
+        cache_size: Cache size for vectors
+        max_vectors: Maximum number of vectors
+    
+    Returns:
+        New VectorMemoryOptimized instance
+    """
+    return VectorMemoryOptimized(memory_dir, cache_size, max_vectors=max_vectors)

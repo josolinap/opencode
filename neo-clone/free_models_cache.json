@@ -1,6 +1,916 @@
 {
   "models": [
     {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-3.2-3b-instruct:free",
+      "name": "Llama 3.2 3B Instruct (Free)",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-3.2-1b-instruct:free",
+      "name": "Llama 3.2 1B Instruct (Free)",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1B"
+    },
+    {
+      "provider": "openrouter",
+      "model": "microsoft/phi-3-mini-128k-instruct:free",
+      "name": "Phi-3 Mini 128K Instruct (Free)",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 128000,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3.8B"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-2-9b-it:free",
+      "name": "Gemma 2 9B Instruct (Free)",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "9B"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen-2.5-7b-instruct:free",
+      "name": "Qwen 2.5 7B Instruct (Free)",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 8192
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "name": "Llama 3.1 8B Instant",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 131072,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "8B"
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.2-3b-preview",
+      "name": "Llama 3.2 3B Preview",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 131072,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.2-1b-preview",
+      "name": "Llama 3.2 1B Preview",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 131072,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1B"
+    },
+    {
+      "provider": "groq",
+      "model": "mixtral-8x7b-32768",
+      "name": "Mixtral 8x7B 32K",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "8x7B"
+    },
+    {
+      "provider": "groq",
+      "model": "gemma2-9b-it",
+      "name": "Gemma 2 9B IT",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "9B"
+    },
+    {
+      "provider": "together",
+      "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
+      "name": "Llama 3.2 3B Instruct Turbo",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "together",
+      "model": "meta-llama/Llama-3.2-1B-Instruct-Turbo",
+      "name": "Llama 3.2 1B Instruct Turbo",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1B"
+    },
+    {
+      "provider": "together",
+      "model": "Qwen/Qwen2.5-7B-Instruct-Turbo",
+      "name": "Qwen 2.5 7B Instruct Turbo",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 8192
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "together",
+      "model": "mistralai/Mistral-7B-Instruct-v0.2",
+      "name": "Mistral 7B Instruct v0.2",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "together",
+      "model": "google/gemma-2-9b-it",
+      "name": "Gemma 2 9B IT",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "9B"
+    },
+    {
+      "provider": "replicate",
+      "model": "meta/meta-llama-3.1-8b-instruct",
+      "name": "Llama 3.1 8B Instruct",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 131072,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "8B"
+    },
+    {
+      "provider": "replicate",
+      "model": "mistralai/mistral-7b-instruct-v0.2",
+      "name": "Mistral 7B Instruct v0.2",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "replicate",
+      "model": "google/gemma-2-9b-it",
+      "name": "Gemma 2 9B IT",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "9B"
+    },
+    {
+      "provider": "ollama",
+      "model": "llama3.2:3b",
+      "name": "Llama 3.2 3B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "ollama",
+      "model": "llama3.2:1b",
+      "name": "Llama 3.2 1B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1B"
+    },
+    {
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "name": "Qwen 2.5 7B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 8192
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "ollama",
+      "model": "gemma2:9b",
+      "name": "Gemma 2 9B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "9B"
+    },
+    {
+      "provider": "ollama",
+      "model": "mistral:7b",
+      "name": "Mistral 7B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "huggingface",
+      "model": "microsoft/DialoGPT-medium",
+      "name": "DialoGPT Medium",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": false,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 1024,
+        "output": 512
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "345M"
+    },
+    {
+      "provider": "huggingface",
+      "model": "facebook/blenderbot-400M-distill",
+      "name": "BlenderBot 400M Distill",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": false,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 128,
+        "output": 128
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "400M"
+    },
+    {
+      "provider": "huggingface",
+      "model": "google/flan-t5-base",
+      "name": "FLAN-T5 Base",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 512,
+        "output": 512
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "220M"
+    },
+    {
       "provider": "opencode",
       "model": "big-pickle",
       "name": "Big Pickle",
@@ -8,7 +918,9 @@
         "input": 0,
         "output": 0,
         "cache_read": 0,
-        "cache_write": 0
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
       },
       "capabilities": {
         "reasoning": true,
@@ -20,22 +932,18 @@
         "context": 200000,
         "output": 128000
       },
-      "release_date": "2025-10-17",
-      "integration_score": 100,
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
       "integration_ready": true,
       "recommended_uses": [
-        "Complex problem solving",
-        "Code analysis",
-        "Logical reasoning",
-        "API integration",
-        "File operations",
-        "External tool usage",
-        "Creative writing",
-        "Content generation",
-        "Brainstorming",
-        "Large document processing"
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
       ],
-      "integration_complexity": "low"
+      "integration_complexity": "low",
+      "model_size": "Large"
     },
     {
       "provider": "opencode",
@@ -45,7 +953,9 @@
         "input": 0,
         "output": 0,
         "cache_read": 0,
-        "cache_write": 0
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
       },
       "capabilities": {
         "reasoning": true,
@@ -57,27 +967,371 @@
         "context": 256000,
         "output": 256000
       },
-      "release_date": "2025-08-20",
-      "integration_score": 100,
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
       "integration_ready": true,
       "recommended_uses": [
-        "Complex problem solving",
-        "Code analysis",
-        "Logical reasoning",
-        "API integration",
-        "File operations",
-        "External tool usage",
-        "Image analysis",
-        "Document processing",
-        "Multi-modal tasks",
-        "Creative writing",
-        "Content generation",
-        "Brainstorming",
-        "Large document processing"
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
       ],
-      "integration_complexity": "low"
+      "integration_complexity": "low",
+      "model_size": "Large"
+    },
+    {
+      "provider": "opencode",
+      "model": "neo-clone-reasoner",
+      "name": "Neo-Clone Reasoner",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 128000,
+        "output": 64000
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "Medium"
+    },
+    {
+      "provider": "opencode",
+      "model": "neo-clone-coder",
+      "name": "Neo-Clone Coder",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": true
+      },
+      "limits": {
+        "context": 64000,
+        "output": 32000
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "Medium"
+    },
+    {
+      "provider": "custom",
+      "model": "deepseek-coder-6.7b-base",
+      "name": "DeepSeek Coder 6.7B Base",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 16384,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "6.7B"
+    },
+    {
+      "provider": "custom",
+      "model": "starcoder2-3b",
+      "name": "StarCoder2 3B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 16384,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "custom",
+      "model": "codegemma-7b",
+      "name": "CodeGemma 7B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "7B"
+    },
+    {
+      "provider": "local",
+      "model": "local-llama-3.2-3b",
+      "name": "Local Llama 3.2 3B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 4096
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3B"
+    },
+    {
+      "provider": "local",
+      "model": "local-phi-3-mini",
+      "name": "Local Phi-3 Mini",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 4096,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "3.8B"
+    },
+    {
+      "provider": "local",
+      "model": "local-qwen-2.5-1.5b",
+      "name": "Local Qwen 2.5 1.5B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 32768,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1.5B"
+    },
+    {
+      "provider": "local",
+      "model": "local-gemma-2-2b",
+      "name": "Local Gemma 2 2B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 8192,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "2B"
+    },
+    {
+      "provider": "local",
+      "model": "local-stablelm-2-1.6b",
+      "name": "Local StableLM 2 1.6B",
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "is_free": true,
+        "tier": "free"
+      },
+      "capabilities": {
+        "reasoning": true,
+        "tool_call": false,
+        "temperature": true,
+        "attachment": false
+      },
+      "limits": {
+        "context": 4096,
+        "output": 2048
+      },
+      "release_date": "2024-01-01",
+      "integration_score": 85.0,
+      "integration_ready": true,
+      "recommended_uses": [
+        "General conversation",
+        "Code generation",
+        "Text analysis",
+        "Problem solving",
+        "Content creation"
+      ],
+      "integration_complexity": "low",
+      "model_size": "1.6B"
     }
   ],
-  "timestamp": 1762970664.281929,
-  "version": "1.0.0"
+  "timestamp": 1763020556.299291,
+  "version": "2.0.0",
+  "total_models": 38
 }

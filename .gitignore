@@ -5,11 +5,66 @@ node_modules
 .env
 .idea
 .vscode
-*~
 openapi.json
 playground
 tmp
 dist
 .turbo
-**/.serena
-.serena/
+
+# Python cache and runtime files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Neo-Clone specific
+neo-clone/data/logs/
+neo-clone/data/memory/
+neo-clone/data/vector_memory/
+model_usage_history.json
+go.msi
+
+# Development artifacts
+*.msi
+demo_*.py
+test_*.py
+*_demo.py
+*_plot.png
+
+# Temporary and log files
+*.tmp
+*.temp
+*.log
+*.bak
+*~
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test and demo organization (these should go in examples/ and tests/ directories)
+# Keep these patterns to prevent future accumulation in root

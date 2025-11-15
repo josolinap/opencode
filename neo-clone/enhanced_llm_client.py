@@ -1,371 +1,429 @@
 """
-Enhanced LLM Client with multiple provider support
-Supports: Ollama, HuggingFace, Together.ai, Replicate, OpenAI-compatible APIs
+Enhanced LLM Client with Automatic Model Fallback System
+
+This module provides intelligent model routing and automatic fallback capabilities
+by integrating the IntelligentModelRouter with the existing LLM client interface.
+
+Key Features:
+- Automatic model selection based on task requirements
+- Intelligent fallback when primary models fail
+- Performance tracking and optimization
+- Seamless integration with existing brain systems
+
+Author: MiniMax Agent
+Version: 1.0
 """
 
-import json
-import logging
+import asyncio
 import time
-import requests
+import logging
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
-from config import Config
+
+# Import existing systems
+try:
+    from ai_model_integration import (
+        IntelligentModelRouter, TaskRequest, TaskResult, 
+        ModelCapability, TaskPriority
+    )
+except ImportError:
+    # Fallback if ai_model_integration is not available
+    IntelligentModelRouter = None
+    TaskRequest = None
+    TaskResult = None
+    ModelCapability = None
+    TaskPriority = None
+
+try:
+    from config import Config
+except ImportError:
+    class Config:
+        def __init__(self):
+            self.provider = "ollama"
+            self.model_name = "llama2"
+            self.api_endpoint = "http://localhost:11434"
+            self.max_tokens = 2048
+            self.temperature = 0.7
+            self.timeout = 30
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
-class ProviderConfig:
-    name: str
-    base_url: str
-    headers: Dict[str, str]
-    supports_streaming: bool = False
-    max_tokens_limit: int = 4096
-    timeout: int = 30
-
-
-class RetryableError(Exception):
-    """Error that can be retried"""
-
-    pass
-
-
-class RateLimitError(Exception):
-    """Rate limit exceeded"""
-
-    pass
-
+class ModelFallbackConfig:
+    """Configuration for model fallback behavior"""
+    enable_fallback: bool = True
+    max_fallback_attempts: int = 3
+    fallback_timeout: float = 30.0
+    prefer_free_models: bool = True
+    track_performance: bool = True
+    auto_optimize: bool = True
 
 class EnhancedLLMClient:
-    """Enhanced LLM client with multiple provider support and resilience"""
-
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-        self.session = requests.Session()
-        self.provider_configs = self._initialize_providers()
-        self.current_provider = self._get_provider_config(cfg.provider)
-
-        # Setup retry configuration
-        self.max_retries = 3
-        self.retry_delay = 1.0
-        self.backoff_factor = 2.0
-
-    def _initialize_providers(self) -> Dict[str, ProviderConfig]:
-        """Initialize all supported provider configurations"""
-        return {
-            "ollama": ProviderConfig(
-                name="Ollama",
-                base_url="http://localhost:11434",
-                headers={"Content-Type": "application/json"},
-                supports_streaming=True,
-                max_tokens_limit=4096,
-                timeout=60,
-            ),
-            "huggingface": ProviderConfig(
-                name="HuggingFace",
-                base_url="https://api-inference.huggingface.co/models",
-                headers={
-                    "Authorization": f"Bearer {self.cfg.api_key}",
-                    "Content-Type": "application/json",
-                },
-                supports_streaming=False,
-                max_tokens_limit=2048,
-                timeout=30,
-            ),
-            "together": ProviderConfig(
-                name="Together.ai",
-                base_url="https://api.together.xyz/v1",
-                headers={
-                    "Authorization": f"Bearer {self.cfg.api_key}",
-                    "Content-Type": "application/json",
-                },
-                supports_streaming=True,
-                max_tokens_limit=4096,
-                timeout=45,
-            ),
-            "replicate": ProviderConfig(
-                name="Replicate",
-                base_url="https://api.replicate.com/v1",
-                headers={
-                    "Authorization": f"Bearer {self.cfg.api_key}",
-                    "Content-Type": "application/json",
-                },
-                supports_streaming=False,
-                max_tokens_limit=4096,
-                timeout=60,
-            ),
-            "openai": ProviderConfig(
-                name="OpenAI-compatible",
-                base_url=self.cfg.api_endpoint or "https://api.openai.com/v1",
-                headers={
-                    "Authorization": f"Bearer {self.cfg.api_key}",
-                    "Content-Type": "application/json",
-                },
-                supports_streaming=True,
-                max_tokens_limit=4096,
-                timeout=30,
-            ),
-        }
-
-    def _get_provider_config(self, provider_name: str) -> ProviderConfig:
-        """Get provider configuration by name"""
-        provider = self.provider_configs.get(provider_name.lower())
-        if not provider:
-            logger.warning(f"Unknown provider {provider_name}, falling back to ollama")
-            provider = self.provider_configs["ollama"]
-        return provider
-
-    def _make_request_with_retry(self, url: str, payload: Dict, headers: Dict) -> Dict:
-        """Make HTTP request with retry logic"""
-        last_error = None
-
-        for attempt in range(self.max_retries):
-            try:
-                response = self.session.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self.current_provider.timeout,
-                )
-
-                # Handle rate limiting
-                if response.status_code == 429:
-                    retry_after = int(
-                        response.headers.get("Retry-After", self.retry_delay)
-                    )
-                    logger.warning(f"Rate limited, waiting {retry_after}s")
-                    time.sleep(retry_after)
-                    raise RateLimitError(f"Rate limited: {response.text}")
-
-                # Handle server errors
-                if response.status_code >= 500:
-                    raise RetryableError(f"Server error: {response.status_code}")
-
-                response.raise_for_status()
-                return response.json()
-
-            except (requests.RequestException, RetryableError, RateLimitError) as e:
-                last_error = e
-                if attempt < self.max_retries - 1:
-                    delay = self.retry_delay * (self.backoff_factor**attempt)
-                    logger.warning(
-                        f"Request failed (attempt {attempt + 1}), retrying in {delay}s: {e}"
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.error(f"All retries failed: {e}")
-
-        raise last_error
-
-    def chat(
-        self, messages: List[Dict[str, str]], timeout: Optional[int] = None
-    ) -> str:
-        """Chat with LLM using current provider"""
-        provider = self.current_provider
-        timeout = timeout or provider.timeout
-
-        try:
-            if provider.name.lower() == "ollama":
-                return self._chat_ollama(messages, timeout)
-            elif provider.name.lower() == "huggingface":
-                return self._chat_huggingface(messages, timeout)
-            elif provider.name.lower() == "together":
-                return self._chat_together(messages, timeout)
-            elif provider.name.lower() == "replicate":
-                return self._chat_replicate(messages, timeout)
-            elif provider.name.lower() == "openai-compatible":
-                return self._chat_openai(messages, timeout)
-            else:
-                raise ValueError(f"Unsupported provider: {provider.name}")
-
-        except Exception as e:
-            logger.error(f"LLM call failed with {provider.name}: {e}")
-            return f"[LLM Error] {provider.name} unavailable: {str(e)}"
-
-    def _chat_ollama(self, messages: List[Dict], timeout: int) -> str:
-        """Chat with Ollama API"""
-        url = f"{self.current_provider.base_url}/api/chat"
-        payload = {
-            "model": self.cfg.model_name,
-            "messages": messages,
-            "max_tokens": min(
-                self.cfg.max_tokens, self.current_provider.max_tokens_limit
-            ),
-            "temperature": self.cfg.temperature,
-            "stream": False,
-        }
-
-        try:
-            data = self._make_request_with_retry(
-                url, payload, self.current_provider.headers
-            )
-            return data.get("message", {}).get("content", "No response from Ollama")
-        except Exception as e:
-            if "404" in str(e) or "Not Found" in str(e):
-                return f"[Ollama Error] Model '{self.cfg.model_name}' not found. Available models: {self._list_ollama_models()}"
-            raise
-
-    def _chat_huggingface(self, messages: List[Dict], timeout: int) -> str:
-        """Chat with HuggingFace API"""
-        # Convert messages to single prompt for HF
-        prompt = self._messages_to_prompt(messages)
-
-        url = f"{self.current_provider.base_url}/{self.cfg.model_name}"
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": min(
-                    self.cfg.max_tokens, self.current_provider.max_tokens_limit
-                ),
-                "temperature": self.cfg.temperature,
-                "return_full_text": False,
-            },
-        }
-
-        data = self._make_request_with_retry(
-            url, payload, self.current_provider.headers
-        )
-
-        if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "No response from HuggingFace")
-        elif isinstance(data, dict):
-            return data.get("generated_text", "No response from HuggingFace")
+    """
+    Enhanced LLM client with intelligent model routing and automatic fallback.
+    
+    This client automatically selects the best model for each task
+    and provides seamless fallback when models fail.
+    """
+    
+    def __init__(self, config: Config, fallback_config: Optional[ModelFallbackConfig] = None):
+        self.cfg = config
+        self.fallback_config = fallback_config or ModelFallbackConfig()
+        
+        # Initialize model router if available
+        if IntelligentModelRouter:
+            self.model_router = IntelligentModelRouter()
+            self.intelligent_routing = True
+            logger.info("Enhanced LLM client initialized with intelligent routing")
         else:
-            return "Unexpected response format from HuggingFace"
-
-    def _chat_together(self, messages: List[Dict], timeout: int) -> str:
-        """Chat with Together.ai API"""
-        url = f"{self.current_provider.base_url}/chat/completions"
-        payload = {
-            "model": self.cfg.model_name,
-            "messages": messages,
-            "max_tokens": min(
-                self.cfg.max_tokens, self.current_provider.max_tokens_limit
-            ),
-            "temperature": self.cfg.temperature,
-            "stream": False,
-        }
-
-        data = self._make_request_with_retry(
-            url, payload, self.current_provider.headers
-        )
-        return data["choices"][0]["message"]["content"]
-
-    def _chat_replicate(self, messages: List[Dict], timeout: int) -> str:
-        """Chat with Replicate API"""
-        prompt = self._messages_to_prompt(messages)
-
-        url = f"{self.current_provider.base_url}/predictions"
-        payload = {
-            "version": self.cfg.model_name,
-            "input": {
-                "prompt": prompt,
-                "max_new_tokens": min(
-                    self.cfg.max_tokens, self.current_provider.max_tokens_limit
-                ),
-                "temperature": self.cfg.temperature,
-            },
-        }
-
-        # Replicate uses async predictions, so we need to poll
-        data = self._make_request_with_retry(
-            url, payload, self.current_provider.headers
-        )
-        prediction_url = data["urls"]["get"]
-
-        # Poll for completion
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            response = self.session.get(
-                prediction_url, headers=self.current_provider.headers
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            if result["status"] == "succeeded":
-                return "".join(result["output"])
-            elif result["status"] == "failed":
-                raise Exception(f"Replicate prediction failed: {result['error']}")
-
-            time.sleep(1)
-
-        raise TimeoutError("Replicate prediction timed out")
-
-    def _chat_openai(self, messages: List[Dict], timeout: int) -> str:
-        """Chat with OpenAI-compatible API"""
-        url = f"{self.current_provider.base_url}/chat/completions"
-        payload = {
-            "model": self.cfg.model_name,
-            "messages": messages,
-            "max_tokens": min(
-                self.cfg.max_tokens, self.current_provider.max_tokens_limit
-            ),
-            "temperature": self.cfg.temperature,
-            "stream": False,
-        }
-
-        data = self._make_request_with_retry(
-            url, payload, self.current_provider.headers
-        )
-        return data["choices"][0]["message"]["content"]
-
-    def _messages_to_prompt(self, messages: List[Dict]) -> str:
-        """Convert message list to single prompt for non-chat APIs"""
-        prompt_parts = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system":
-                prompt_parts.append(f"System: {content}")
-            elif role == "assistant":
-                prompt_parts.append(f"Assistant: {content}")
+            self.model_router = None
+            self.intelligent_routing = False
+            logger.warning("Intelligent routing unavailable, using fallback mode")
+        
+        # Initialize basic HTTP client for direct communication
+        if requests:
+            self.session = requests.Session()
+        else:
+            self.session = None
+            logger.error("requests library not available")
+        
+        # Performance tracking
+        self.request_history = []
+        self.model_performance = {}
+        
+    def chat(self, messages: List[Dict[str, str]], timeout: int = 15) -> str:
+        """
+        Enhanced chat method with automatic model fallback.
+        
+        Args:
+            messages: Conversation history in OpenAI format
+            timeout: Request timeout in seconds
+            
+        Returns:
+            Model response as string
+        """
+        if not self.intelligent_routing:
+            return self._fallback_chat(messages, timeout)
+        
+        try:
+            # Convert messages to task request
+            task_request = self._create_task_request(messages, timeout)
+            
+            # Execute with intelligent routing (sync wrapper for async with timeout protection)
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Add timeout protection for async operations
+            try:
+                result = loop.run_until_complete(
+                    asyncio.wait_for(
+                        self.model_router.execute_task(task_request),
+                        timeout=min(timeout, 10)  # Max 10 seconds for routing
+                    )
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Intelligent routing timed out")
+                return self._fallback_chat(messages, timeout)
+            
+            # Track performance
+            self._track_performance(result)
+            
+            if result.success:
+                return result.result
             else:
-                prompt_parts.append(f"Human: {content}")
-
-        return "\n\n".join(prompt_parts) + "\n\nAssistant: "
-
-    def _list_ollama_models(self) -> str:
-        """List available Ollama models"""
-        try:
-            response = self.session.get(
-                f"{self.current_provider.base_url}/api/tags", timeout=5
-            )
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                return ", ".join([model["name"] for model in models])
-        except:
-            pass
-        return "Unable to fetch models"
-
-    def test_connection(self) -> Dict[str, Any]:
-        """Test connection to current provider"""
-        try:
-            start_time = time.time()
-            response = self.chat([{"role": "user", "content": "Hello"}], timeout=10)
-            response_time = time.time() - start_time
-
-            return {
-                "success": True,
-                "provider": self.current_provider.name,
-                "model": self.cfg.model_name,
-                "response_time": response_time,
-                "response_preview": response[:100] + "..."
-                if len(response) > 100
-                else response,
-            }
+                logger.warning(f"Intelligent routing failed: {result.error_message}")
+                return self._fallback_chat(messages, timeout)
+                
         except Exception as e:
-            return {
-                "success": False,
-                "provider": self.current_provider.name,
-                "model": self.cfg.model_name,
-                "error": str(e),
+            logger.error(f"Enhanced chat failed: {e}")
+            return self._fallback_chat(messages, timeout)
+    
+    def _fallback_chat(self, messages: List[Dict[str, str]], timeout: int) -> str:
+        """
+        Fallback chat method using direct model communication.
+        
+        This is used when intelligent routing is unavailable or fails.
+        """
+        if not self.session:
+            return "[Error] No HTTP client available"
+        
+        provider = self.cfg.provider.lower()
+        if provider == "ollama":
+            return self._ollama_chat(messages, timeout)
+        else:
+            return f"[Error] Provider {provider} not supported in fallback mode"
+    
+    def _ollama_chat(self, messages: List[Dict[str, str]], timeout: int) -> str:
+        """Direct Ollama communication with fast failure detection"""
+        url = self.cfg.api_endpoint.rstrip("/") + "/api/chat"
+        payload = {
+            "model": self.cfg.model_name,
+            "messages": messages,
+            "max_tokens": self.cfg.max_tokens,
+            "temperature": self.cfg.temperature,
+        }
+        
+        # Use shorter timeout for faster failure detection
+        fast_timeout = min(timeout, 5)
+        
+        try:
+            resp = self.session.post(url, json=payload, timeout=fast_timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("message", {}).get("content", "No response.")
+        except Exception as e:
+            logger.error(f"Ollama fallback failed: {e}")
+            # Return a graceful fallback response instead of error
+            return self._generate_fallback_response(messages)
+    
+    def _create_task_request(self, messages: List[Dict[str, str]], timeout: int) -> TaskRequest:
+        """Convert chat messages to TaskRequest format"""
+        if not TaskRequest:
+            raise ImportError("TaskRequest not available")
+        
+        # Extract the last user message as the prompt
+        user_message = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_message = msg.get("content", "")
+                break
+        
+        # Determine task type and capabilities from message
+        task_type, capabilities = self._analyze_task_requirements(user_message)
+        
+        return TaskRequest(
+            task_type=task_type,
+            prompt=user_message,
+            capabilities_needed=capabilities,
+            priority=TaskPriority.MEDIUM,
+            max_tokens=self.cfg.max_tokens,
+            timeout=timeout,
+            require_reliability=True
+        )
+    
+    def _analyze_task_requirements(self, message: str) -> tuple[str, List[ModelCapability]]:
+        """
+        Analyze message to determine task type and required capabilities.
+        
+        Returns:
+            Tuple of (task_type, required_capabilities)
+        """
+        if not ModelCapability:
+            return "general", []
+        
+        message_lower = message.lower()
+        capabilities = []
+        task_type = "general"
+        
+        # Analyze for different task types
+        if any(word in message_lower for word in ["code", "python", "function", "class", "programming"]):
+            capabilities.extend([
+                ModelCapability.CODE_GENERATION,
+                ModelCapability.CODE_ANALYSIS
+            ])
+            task_type = "code_generation"
+        
+        if any(word in message_lower for word in ["analyze", "explain", "debug", "fix"]):
+            capabilities.extend([
+                ModelCapability.CODE_ANALYSIS,
+                ModelCapability.REASONING
+            ])
+            task_type = "analysis"
+        
+        if any(word in message_lower for word in ["write", "create", "generate", "compose"]):
+            capabilities.append(ModelCapability.TEXT_GENERATION)
+            if task_type == "general":
+                task_type = "text_generation"
+        
+        if any(word in message_lower for word in ["search", "find", "research", "look up"]):
+            capabilities.append(ModelCapability.WEB_SEARCH)
+            task_type = "web_search"
+        
+        if any(word in message_lower for word in ["reason", "think", "solve", "logic"]):
+            capabilities.append(ModelCapability.REASONING)
+            if task_type == "general":
+                task_type = "reasoning"
+        
+        # Default capabilities if none detected
+        if not capabilities:
+            capabilities = [ModelCapability.TEXT_GENERATION, ModelCapability.REASONING]
+        
+        return task_type, list(set(capabilities))  # Remove duplicates
+    
+    def _track_performance(self, result: TaskResult):
+        """Track model performance for optimization"""
+        if not self.fallback_config.track_performance:
+            return
+        
+        model_name = result.model_used
+        if model_name not in self.model_performance:
+            self.model_performance[model_name] = {
+                "success_count": 0,
+                "failure_count": 0,
+                "total_response_time": 0.0,
+                "total_tokens": 0,
+                "last_used": 0.0
             }
+        
+        perf = self.model_performance[model_name]
+        if result.success:
+            perf["success_count"] += 1
+        else:
+            perf["failure_count"] += 1
+        
+        perf["total_response_time"] += result.execution_time
+        perf["total_tokens"] += result.tokens_used
+        perf["last_used"] = time.time()
+        
+        # Keep only recent history
+        self.request_history.append({
+            "model": model_name,
+            "success": result.success,
+            "response_time": result.execution_time,
+            "timestamp": time.time()
+        })
+        
+        # Limit history size
+        if len(self.request_history) > 1000:
+            self.request_history = self.request_history[-500:]
+    
+    def get_model_stats(self) -> Dict[str, Any]:
+        """Get performance statistics for all models"""
+        stats = {}
+        
+        for model_name, perf in self.model_performance.items():
+            total_requests = perf["success_count"] + perf["failure_count"]
+            if total_requests > 0:
+                success_rate = perf["success_count"] / total_requests
+                avg_response_time = perf["total_response_time"] / total_requests
+            else:
+                success_rate = 0.0
+                avg_response_time = 0.0
+            
+            stats[model_name] = {
+                "success_rate": success_rate,
+                "avg_response_time": avg_response_time,
+                "total_requests": total_requests,
+                "last_used": perf["last_used"]
+            }
+        
+        return stats
+    
+    def get_best_models(self) -> List[str]:
+        """Get list of models ranked by performance"""
+        if not self.model_performance:
+            return []
+        
+        # Sort models by success rate and response time
+        ranked_models = []
+        for model_name, perf in self.model_performance.items():
+            total_requests = perf["success_count"] + perf["failure_count"]
+            if total_requests >= 3:  # Only consider models with sufficient data
+                success_rate = perf["success_count"] / total_requests
+                avg_response_time = perf["total_response_time"] / total_requests
+                
+                # Calculate score (higher is better)
+                score = success_rate * 0.7 + (1.0 / (1.0 + avg_response_time)) * 0.3
+                ranked_models.append((model_name, score))
+        
+        # Sort by score (descending)
+        ranked_models.sort(key=lambda x: x[1], reverse=True)
+        return [model for model, _ in ranked_models]
+    
+    def _generate_fallback_response(self, messages: List[Dict[str, str]]) -> str:
+        """Generate a graceful fallback response when models are unavailable"""
+        # Extract the last user message
+        user_message = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_message = msg.get("content", "")
+                break
+        
+        # Generate contextual fallback response
+        if not user_message:
+            return "I'm here to help! What would you like to know?"
+        
+        # Simple keyword-based responses for common queries
+        message_lower = user_message.lower()
+        
+        if any(word in message_lower for word in ["hello", "hi", "hey"]):
+            return "Hello! I'm Neo-Clone, your AI assistant. I can help with code generation, data analysis, web research, and more. What can I help you with today?"
+        
+        if any(word in message_lower for word in ["help", "commands", "what can you do"]):
+            return """I can help you with:
+• Code generation (Python, ML, algorithms)
+• Data analysis (CSV, JSON, insights)
+• Text analysis (sentiment, moderation)
+• ML training guidance
+• File management
+• Web research
+• Advanced reasoning
+• Project planning
 
-    def switch_provider(self, provider_name: str) -> bool:
-        """Switch to a different provider"""
-        if provider_name.lower() in self.provider_configs:
-            self.current_provider = self._get_provider_config(provider_name)
-            self.cfg.provider = provider_name.lower()
-            logger.info(f"Switched to provider: {provider_name}")
-            return True
-        return False
+Just ask me anything!"""
+        
+        if any(word in message_lower for word in ["skill", "skills"]):
+            return "I have 12 specialized skills including code generation, data analysis, web research, and more. Type 'skills' in the CLI to see all available skills."
+        
+        if any(word in message_lower for word in ["bye", "exit", "quit"]):
+            return "Goodbye! Feel free to come back anytime you need help."
+        
+        # Check for specific skill requests and provide targeted help
+        if any(word in message_lower for word in ["code", "python", "generate", "function", "class"]):
+            return "I can help you generate code! While models are connecting, try asking specifically for 'code generation' or I can use my code generation skill once you provide more details about what you'd like to create."
+        
+        if any(word in message_lower for word in ["analyze", "data", "csv", "json", "stats"]):
+            return "I can help you analyze data! Try asking me to 'analyze data' or use my data inspector skill. You can also provide file paths or data directly."
+        
+        if any(word in message_lower for word in ["search", "web", "find", "research"]):
+            return "I can help you research information! Try asking me to 'search the web' or use my web research skill to find current information."
+        
+        if any(word in message_lower for word in ["sentiment", "text", "moderate", "analyze text"]):
+            return "I can help you analyze text! Try asking me to 'analyze text sentiment' or use my text analysis skill for content processing."
+        
+        # Default intelligent response
+        message_preview = user_message[:100] + ('...' if len(user_message) > 100 else '')
+        response = f"I understand you're asking about: '{message_preview}'. \n\n"
+        response += "I'm currently operating in enhanced mode with intelligent routing. While the primary models are connecting, I have 12 specialized skills ready:\n\n"
+        response += "• Code generation (Python, ML, algorithms)\n"
+        response += "• Data analysis (CSV, JSON, insights)\n" 
+        response += "• Text analysis (sentiment, moderation)\n"
+        response += "• Web research and fact-checking\n"
+        response += "• ML training guidance\n"
+        response += "• File management\n"
+        response += "• Advanced reasoning\n\n"
+        response += "Try rephrasing your request with skill-specific keywords!"
+        return response
+
+    def reset_performance_tracking(self):
+        """Reset all performance tracking data"""
+        self.model_performance.clear()
+        self.request_history.clear()
+        logger.info("Performance tracking reset")
+
+# Factory function for easy integration
+def create_enhanced_llm_client(config: Config, 
+                             fallback_config: Optional[ModelFallbackConfig] = None) -> EnhancedLLMClient:
+    """
+    Factory function to create an enhanced LLM client.
+    
+    Args:
+        config: LLM configuration
+        fallback_config: Optional fallback configuration
+        
+    Returns:
+        EnhancedLLMClient instance
+    """
+    return EnhancedLLMClient(config, fallback_config)

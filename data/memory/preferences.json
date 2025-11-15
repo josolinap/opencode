@@ -1,0 +1,8 @@
+{
+  "theme": "light",
+  "max_history": 50,
+  "auto_save": true,
+  "log_level": "INFO",
+  "preferred_model": null,
+  "custom_commands": {}
+}

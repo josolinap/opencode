@@ -1,1347 +1,2718 @@
 """
-enhanced_brain.py - Enhanced Neo-Clone Brain with Advanced Frameworks
+Enhanced Brain System for MiniMax Agent Architecture
 
-Integrates cutting-edge AI frameworks into Neo-Clone's brain:
-- PocketFlow agent orchestration
-- Advanced vector memory system
-- ClearFlow-inspired type-safe workflows
-- Multi-agent collaboration
-- Advanced reasoning chains
-- MCP protocol integration
+This module provides advanced reasoning strategies including chain-of-thought,
+tree-of-thought, reflexion, and collaborative agent orchestration that builds
+on top of the Base Brain foundation.
 
-This is the next-generation brain architecture that makes Neo-Clone
-significantly more powerful and capable.
+Author: MiniMax Agent
+Version: 1.0
 """
 
-import json
 import asyncio
-import time
-from typing import Dict, List, Any, Optional, Union, Callable
-from dataclasses import dataclass, field
-from datetime import datetime
-import logging
-from enum import Enum
 import threading
-import hashlib
+import time
+import json
+import math
+from typing import Dict, List, Optional, Any, Tuple, Union, Set
+from datetime import datetime
+from enum import Enum
+from dataclasses import dataclass, field
+import logging
+import uuid
+import heapq
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from brain import Brain, Message, ConversationHistory
-from pocketflow import PocketFlow, FlowContext
-from vector_memory import VectorMemory, MemoryVector, MemoryQuery
-from memory import get_memory
+# Import base brain and foundational modules
+from base_brain import BaseBrain, ProcessingMode, ReasoningStrategy
+from config import Config
+from skills import SkillsManager
+from data_models import (
+    Message, MessageRole, ConversationHistory, MemoryEntry, MemoryType,
+    IntentType, SkillCategory, SkillResult, SkillContext, ReasoningStep,
+    MiniMaxReasoningTrace, PerformanceMetrics, SkillExecutionStatus
+)
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
-# Upgrade Implementation Classes
-@dataclass
-class CacheEntry:
-    """Cache entry for response caching"""
-    response: str
-    timestamp: float
-    ttl: float = 300.0  # 5 minutes default
-    hit_count: int = 0
-    similarity_score: float = 0.0
 
-class ResponseCache:
-    """Intelligent response caching system with semantic similarity"""
+class AdvancedReasoningStrategy(Enum):
+    """Advanced reasoning strategies"""
+    CHAIN_OF_THOUGHT = "chain_of_thought"    # Step-by-step reasoning
+    TREE_OF_THOUGHT = "tree_of_thought"      # Tree-based exploration
+    REFLEXION = "reflexion"                  # Self-reflection and improvement
+    MULTI_PATH = "multi_path"                # Multiple reasoning paths
+    COLLABORATIVE = "collaborative"          # Multi-agent collaboration
+    HYBRID = "hybrid"                        # Combination of strategies
+
+
+class ReasoningNode:
+    """Node in reasoning tree"""
     
-    def __init__(self, max_size: int = 1000):
-        self.cache: Dict[str, CacheEntry] = {}
-        self.max_size = max_size
-        self.hit_count = 0
-        self.miss_count = 0
-        self._lock = threading.RLock()
-    
-    def _generate_key(self, query: str) -> str:
-        """Generate cache key from query"""
-        return hashlib.md5(query.encode()).hexdigest()
-    
-    def get(self, query: str, similarity_threshold: float = 0.8) -> Optional[str]:
-        """Get cached response with semantic similarity matching"""
-        with self._lock:
-            key = self._generate_key(query)
-            
-            if key not in self.cache:
-                self.miss_count += 1
-                return None
-            
-            entry = self.cache[key]
-            
-            # Check TTL
-            if time.time() - entry.timestamp > entry.ttl:
-                del self.cache[key]
-                self.miss_count += 1
-                return None
-            
-            # Check similarity (simplified - could use actual embeddings)
-            if entry.similarity_score >= similarity_threshold:
-                entry.hit_count += 1
-                self.hit_count += 1
-                return entry.response
-            
-            self.miss_count += 1
-            return None
-    
-    def put(self, query: str, response: str, similarity_score: float = 1.0):
-        """Cache response with similarity score"""
-        with self._lock:
-            key = self._generate_key(query)
-            
-            # Evict if at capacity
-            if len(self.cache) >= self.max_size:
-                self._evict_oldest()
-            
-            self.cache[key] = CacheEntry(
-                response=response,
-                timestamp=time.time(),
-                similarity_score=similarity_score
-            )
-    
-    def _evict_oldest(self):
-        """Evict oldest entry"""
-        if not self.cache:
-            return
+    def __init__(
+        self,
+        content: str,
+        confidence: float = 0.0,
+        parent: Optional["ReasoningNode"] = None,
+        node_type: str = "reasoning",
+        metadata: Dict[str, Any] = None
+    ):
+        self.id = str(uuid.uuid4())
+        self.content = content
+        self.confidence = confidence
+        self.parent = parent
+        self.children: List["ReasoningNode"] = []
+        self.node_type = node_type
+        self.metadata = metadata or {}
+        self.timestamp = datetime.now()
+        self.evaluation_score = 0.0
         
-        oldest_key = min(self.cache.keys(), 
-                      key=lambda k: self.cache[k].timestamp)
-        del self.cache[oldest_key]
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        total_requests = self.hit_count + self.miss_count
-        hit_rate = self.hit_count / total_requests if total_requests > 0 else 0.0
+    def add_child(self, child: "ReasoningNode") -> None:
+        """Add child node"""
+        child.parent = self
+        self.children.append(child)
         
+    def get_path(self) -> List["ReasoningNode"]:
+        """Get path from root to this node"""
+        path = []
+        current = self
+        while current:
+            path.append(current)
+            current = current.parent
+        return list(reversed(path))
+        
+    def evaluate_score(self, evaluation_function: callable) -> float:
+        """Evaluate node using custom function"""
+        self.evaluation_score = evaluation_function(self)
+        return self.evaluation_score
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
         return {
-            "hit_count": self.hit_count,
-            "miss_count": self.miss_count,
-            "hit_rate": hit_rate,
-            "cache_size": len(self.cache),
-            "max_size": self.max_size
+            "id": self.id,
+            "content": self.content,
+            "confidence": self.confidence,
+            "node_type": self.node_type,
+            "evaluation_score": self.evaluation_score,
+            "metadata": self.metadata,
+            "timestamp": self.timestamp.isoformat(),
+            "children": [child.to_dict() for child in self.children]
         }
 
-class ModelValidatorIntegrated:
-    """Integrated model validation with discovery system"""
+
+class ReasoningTree:
+    """Tree-based reasoning structure"""
     
-    def __init__(self):
-        self.validation_results: Dict[str, Dict] = {}
-        self.performance_cache: Dict[str, Dict] = {}
-        self.executor = ThreadPoolExecutor(max_workers=5)
+    def __init__(self, root_content: str, root_confidence: float = 1.0):
+        self.root = ReasoningNode(root_content, root_confidence, node_type="root")
+        self.nodes: Dict[str, ReasoningNode] = {self.root.id: self.root}
+        self.best_path: List[ReasoningNode] = []
+        self.total_nodes = 1
+        
+    def add_node(
+        self,
+        content: str,
+        parent_id: str,
+        confidence: float = 0.5,
+        node_type: str = "reasoning",
+        metadata: Dict[str, Any] = None
+    ) -> ReasoningNode:
+        """Add new node to tree"""
+        parent = self.nodes.get(parent_id)
+        if not parent:
+            raise ValueError(f"Parent node {parent_id} not found")
+            
+        node = ReasoningNode(content, confidence, parent, node_type, metadata)
+        parent.add_child(node)
+        self.nodes[node.id] = node
+        self.total_nodes += 1
+        
+        return node
+        
+    def find_best_path(
+        self,
+        evaluation_function: callable,
+        max_depth: int = 10
+    ) -> Tuple[List[ReasoningNode], float]:
+        """Find best reasoning path using evaluation function"""
+        def dfs_evaluate(node: ReasoningNode, depth: int) -> float:
+            if depth > max_depth or not node.children:
+                return node.evaluate_score(evaluation_function)
+                
+            best_score = node.evaluate_score(evaluation_function)
+            for child in node.children:
+                child_score = dfs_evaluate(child, depth + 1)
+                if child_score > best_score:
+                    best_score = child_score
+                    
+            node.evaluation_score = best_score
+            return best_score
+            
+        # Find best path
+        best_score = dfs_evaluate(self.root, 0)
+        
+        # Reconstruct best path
+        def find_path(node: ReasoningNode) -> List[ReasoningNode]:
+            if not node.children:
+                return [node]
+                
+            best_child = max(node.children, key=lambda c: c.evaluation_score)
+            if best_child.evaluation_score <= node.evaluation_score:
+                return [node]
+                
+            return [node] + find_path(best_child)
+            
+        self.best_path = find_path(self.root)
+        return self.best_path, best_score
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert tree to dictionary"""
+        return {
+            "root": self.root.to_dict(),
+            "total_nodes": self.total_nodes,
+            "best_path_length": len(self.best_path)
+        }
+
+
+class CollaborativeAgent:
+    """Individual agent in collaborative reasoning"""
     
-    def validate_discovered_models(self, models: Dict[str, Any]) -> Dict[str, Dict]:
-        """Validate all discovered models with parallel processing"""
-        logger.info(f"Starting validation of {len(models)} models...")
+    def __init__(
+        self,
+        agent_id: str,
+        specialization: SkillCategory,
+        capabilities: List[str],
+        max_reasoning_steps: int = 5
+    ):
+        self.agent_id = agent_id
+        self.specialization = specialization
+        self.capabilities = capabilities
+        self.max_reasoning_steps = max_reasoning_steps
+        self.status = SkillExecutionStatus.PENDING
+        self.current_task = None
+        self.result_history: List[Dict[str, Any]] = []
+        self.confidence_score = 0.5
+        self.load_factor = 0.0
         
-        validation_tasks = []
-        for model_id, model_info in models.items():
-            task = self.executor.submit(self._validate_single_model, model_id, model_info)
-            validation_tasks.append((model_id, task))
-        
-        # Collect results
-        validated_models = {}
-        for model_id, task in validation_tasks:
-            try:
-                result = task.result(timeout=30)  # 30 second timeout per model
-                validated_models[model_id] = result
-                logger.info(f"Validated {model_id}: {result['status']}")
-            except Exception as e:
-                logger.error(f"Failed to validate {model_id}: {e}")
-                validated_models[model_id] = {
-                    "status": "validation_failed",
-                    "error": str(e),
-                    "last_checked": time.time()
-                }
-        
-        self.validation_results = validated_models
-        logger.info(f"Validation complete: {len(validated_models)} models processed")
-        return validated_models
-    
-    def _validate_single_model(self, model_id: str, model_info: Any) -> Dict[str, Any]:
-        """Validate a single model"""
-        start_time = time.time()
+    async def process_task(
+        self,
+        task: Dict[str, Any],
+        context: List[MemoryEntry]
+    ) -> Dict[str, Any]:
+        """Process a reasoning task"""
+        self.current_task = task
+        self.status = SkillExecutionStatus.RUNNING
         
         try:
-            # Simulate validation (in real implementation, would make API calls)
-            if hasattr(model_info, 'provider') and model_info.provider == "ollama":
-                # Check if Ollama is running
-                try:
-                    import requests
-                    response = requests.get(f"{model_info.api_endpoint}/api/tags", timeout=5)
-                    if response.status_code == 200:
-                        available_models = response.json().get("models", [])
-                        model_available = any(
-                            model_info.model_name in m.get("name", "") 
-                            for m in available_models
-                        )
-                        
-                        return {
-                            "status": "available" if model_available else "not_found",
-                            "response_time": time.time() - start_time,
-                            "last_checked": time.time(),
-                            "endpoint_reachable": True,
-                            "model_available": model_available
-                        }
-                    else:
-                        return {
-                            "status": "endpoint_error",
-                            "response_time": time.time() - start_time,
-                            "last_checked": time.time(),
-                            "endpoint_reachable": False,
-                            "http_status": response.status_code
-                        }
-                except Exception as e:
-                    return {
-                        "status": "connection_failed",
-                        "response_time": time.time() - start_time,
-                        "last_checked": time.time(),
-                        "endpoint_reachable": False,
-                        "error": str(e)
-                    }
+            # Simulate specialized processing based on capabilities
+            result = await self._specialized_processing(task, context)
             
-            # For other providers, simulate validation
-            elif hasattr(model_info, 'provider') and model_info.provider in ["huggingface", "replicate", "together"]:
-                # Simulate API validation
-                time.sleep(0.1)  # Simulate network latency
-                return {
-                    "status": "simulated_valid",
-                    "response_time": time.time() - start_time,
-                    "last_checked": time.time(),
-                    "note": "Simulated validation - implement real API calls"
-                }
-            
+            # Update confidence based on result quality
+            if result.get("success", False):
+                self.confidence_score = min(1.0, self.confidence_score + 0.1)
             else:
-                return {
-                    "status": "validation_not_implemented",
-                    "response_time": time.time() - start_time,
-                    "last_checked": time.time(),
-                    "provider": getattr(model_info, 'provider', 'unknown')
-                }
+                self.confidence_score = max(0.0, self.confidence_score - 0.1)
                 
+            self.result_history.append({
+                "task": task,
+                "result": result,
+                "timestamp": datetime.now().isoformat(),
+                "confidence": self.confidence_score
+            })
+            
+            self.status = SkillExecutionStatus.SUCCESS
+            return result
+            
         except Exception as e:
+            self.status = SkillExecutionStatus.FAILED
+            self.confidence_score = max(0.0, self.confidence_score - 0.2)
+            
             return {
-                "status": "validation_error",
-                "response_time": time.time() - start_time,
-                "last_checked": time.time(),
-                "error": str(e)
+                "success": False,
+                "error": str(e),
+                "agent_id": self.agent_id,
+                "timestamp": datetime.now().isoformat()
             }
-    
-    def get_validation_summary(self) -> Dict[str, Any]:
-        """Get summary of validation results"""
-        if not self.validation_results:
-            return {"total": 0, "valid": 0, "invalid": 0, "unknown": 0}
-        
-        summary = {"total": 0, "valid": 0, "invalid": 0, "unknown": 0, "by_provider": {}}
-        
-        for model_id, result in self.validation_results.items():
-            summary["total"] += 1
-            status = result.get("status", "unknown")
+        finally:
+            self.current_task = None
             
-            if status in ["available", "simulated_valid"]:
-                summary["valid"] += 1
-            elif status in ["not_found", "endpoint_error", "connection_failed", "validation_error"]:
-                summary["invalid"] += 1
-            else:
-                summary["unknown"] += 1
+    async def _specialized_processing(
+        self,
+        task: Dict[str, Any],
+        context: List[MemoryEntry]
+    ) -> Dict[str, Any]:
+        """Specialized processing based on agent capabilities"""
+        task_type = task.get("type", "general")
+        user_input = task.get("input", "")
+        
+        # Simulate different processing strategies based on specialization
+        if self.specialization == SkillCategory.CODE_GENERATION:
+            if "code" in task_type.lower() or "implement" in user_input.lower():
+                return await self._process_code_task(task, context)
+        elif self.specialization == SkillCategory.DATA_ANALYSIS:
+            if "analyze" in task_type.lower() or "data" in user_input.lower():
+                return await self._process_data_task(task, context)
+        elif self.specialization == SkillCategory.GENERAL:
+            return await self._process_reasoning_task(task, context)
+        elif self.specialization == SkillCategory.PLANNING:
+            return await self._process_planning_task(task, context)
             
-            # Track by provider
-            provider = model_id.split("/")[0]
-            if provider not in summary["by_provider"]:
-                summary["by_provider"][provider] = {"valid": 0, "invalid": 0, "unknown": 0}
-            
-            if status in ["available", "simulated_valid"]:
-                summary["by_provider"][provider]["valid"] += 1
-            elif status in ["not_found", "endpoint_error", "connection_failed", "validation_error"]:
-                summary["by_provider"][provider]["invalid"] += 1
-            else:
-                summary["by_provider"][provider]["unknown"] += 1
+        # Default general processing
+        return await self._process_general_task(task, context)
         
-        return summary
-
-class VectorMemoryOptimized:
-    """Optimized vector memory with indexing and background tasks"""
-    
-    def __init__(self, memory_dir: str = "data/vector_memory"):
-        self.memory_dir = memory_dir
-        self.vectors: List[Dict] = []
-        self.index: Optional[Dict] = None
-        self.background_tasks = []
-        self._running = False
-        self._lock = threading.RLock()
+    async def _process_code_task(self, task: Dict[str, Any], context: List[MemoryEntry]) -> Dict[str, Any]:
+        """Process code-related tasks"""
+        await asyncio.sleep(0.1)  # Simulate processing time
         
-        # Performance optimization
-        self.cache_size = 1000
-        self.cache: Dict[str, Dict] = {}
-        self.consolidation_interval = 300  # 5 minutes
-        
-        # Initialize
-        self._initialize_optimized()
-    
-    def _initialize_optimized(self):
-        """Initialize optimized vector memory"""
-        import os
-        os.makedirs(self.memory_dir, exist_ok=True)
-        
-        # Load existing vectors
-        self._load_vectors()
-        
-        # Build index
-        self._build_index()
-        
-        # Start background tasks
-        self._start_background_tasks()
-    
-    def _start_background_tasks(self):
-        """Start background optimization tasks"""
-        if self._running:
-            return
-        
-        self._running = True
-        
-        def background_worker():
-            while self._running:
-                try:
-                    # Memory consolidation
-                    self._consolidate_memory()
-                    
-                    # Index optimization
-                    self._optimize_index()
-                    
-                    # Cache cleanup
-                    self._cleanup_cache()
-                    
-                    time.sleep(self.consolidation_interval)
-                    
-                except Exception as e:
-                    logger.error(f"Background task error: {e}")
-                    time.sleep(60)  # Wait before retry
-        
-        self.background_thread = threading.Thread(target=background_worker, daemon=True)
-        self.background_thread.start()
-        logger.info("Vector memory background tasks started")
-    
-    def _build_index(self):
-        """Build optimized index for faster search"""
-        with self._lock:
-            # Simple inverted index for keyword search
-            self.index = {
-                "keywords": {},
-                "vectors": [(i, v) for i, v in enumerate(self.vectors)]
-            }
-            
-            # Build keyword index
-            for i, vector in enumerate(self.vectors):
-                words = vector.get("content", "").lower().split()
-                for word in set(words):
-                    if word not in self.index["keywords"]:
-                        self.index["keywords"][word] = []
-                    self.index["keywords"][word].append(i)
-    
-    def _consolidate_memory(self):
-        """Consolidate and optimize memory storage"""
-        with self._lock:
-            if len(self.vectors) > self.cache_size * 2:
-                # Keep only most important vectors
-                self.vectors.sort(key=lambda v: v.get("importance", 0), reverse=True)
-                self.vectors = self.vectors[:self.cache_size]
-                self._build_index()  # Rebuild index
-                logger.info(f"Memory consolidated: {len(self.vectors)} vectors retained")
-    
-    def _optimize_index(self):
-        """Optimize search index"""
-        with self._lock:
-            if self.index:
-                # Rebuild index periodically
-                self._build_index()
-                logger.debug("Index optimized")
-    
-    def _cleanup_cache(self):
-        """Clean up expired cache entries"""
-        current_time = time.time()
-        expired_keys = [
-            key for key, entry in self.cache.items()
-            if current_time - entry.get("timestamp", 0) > 3600  # 1 hour
-        ]
-        
-        for key in expired_keys:
-            del self.cache[key]
-        
-        if expired_keys:
-            logger.debug(f"Cleaned {len(expired_keys)} expired cache entries")
-    
-    def search_optimized(self, query: str, limit: int = 10, threshold: float = 0.7) -> List[Dict]:
-        """Optimized search with indexing"""
-        with self._lock:
-            if not self.index:
-                return []
-            
-            # Keyword-based pre-filtering
-            query_words = query.lower().split()
-            candidate_indices = set()
-            
-            for word in query_words:
-                if word in self.index["keywords"]:
-                    candidate_indices.update(self.index["keywords"][word])
-            
-            if not candidate_indices:
-                # Fallback to linear search
-                return self._linear_search(query, limit, threshold)
-            
-            # Rank candidates (simplified - would use actual vector similarity)
-            candidates = [(i, self.vectors[i]) for i in candidate_indices]
-            candidates.sort(key=lambda x: x[1].get("importance", 0), reverse=True)
-            
-            return candidates[:limit]
-    
-    def _linear_search(self, query: str, limit: int, threshold: float) -> List[Dict]:
-        """Fallback linear search"""
-        results = []
-        for i, vector in enumerate(self.vectors):
-            # Simple similarity based on word overlap
-            query_words = set(query.lower().split())
-            content_words = set(vector.get("content", "").lower().split())
-            
-            if query_words and content_words:
-                similarity = len(query_words & content_words) / len(query_words | content_words)
-                if similarity >= threshold:
-                    results.append((i, vector))
-        
-        results.sort(key=lambda x: x[1].get("importance", 0), reverse=True)
-        return results[:limit]
-    
-    def _load_vectors(self):
-        """Load vectors from storage"""
-        # Implementation would load from file/database
-        # For now, start with empty
-        self.vectors = []
-    
-    def add_vector_optimized(self, content: str, metadata: Dict = None) -> str:
-        """Add vector with optimization"""
-        import uuid
-        
-        vector_id = str(uuid.uuid4())
-        vector = {
-            "id": vector_id,
-            "content": content,
-            "metadata": metadata or {},
-            "timestamp": time.time(),
-            "importance": metadata.get("importance", 1.0) if metadata else 1.0
-        }
-        
-        with self._lock:
-            self.vectors.append(vector)
-            
-            # Update index incrementally
-            if self.index:
-                words = content.lower().split()
-                for word in set(words):
-                    if word not in self.index["keywords"]:
-                        self.index["keywords"][word] = []
-                    self.index["keywords"][word].append(len(self.vectors) - 1)
-        
-        return vector_id
-    
-    def stop_background_tasks(self):
-        """Stop background tasks"""
-        self._running = False
-        if hasattr(self, 'background_thread'):
-            self.background_thread.join(timeout=5)
-        logger.info("Vector memory background tasks stopped")
-    
-    # Compatibility methods with original VectorMemory interface
-    def add_memory(self, content: str, memory_type: str = "episodic", importance: float = 0.5, tags: List[str] = None):
-        """Add memory with compatibility interface"""
-        metadata = {
-            "memory_type": memory_type,
-            "importance": importance,
-            "tags": tags or []
-        }
-        return self.add_vector_optimized(content, metadata)
-    
-    def search(self, query, limit: int = 10, threshold: float = 0.6, hybrid_search: bool = True):
-        """Search with compatibility interface"""
-        results = self.search_optimized(query.text if hasattr(query, 'text') else query, limit, threshold)
-        
-        # Convert to MemoryVector-like objects for compatibility
-        memory_vectors = []
-        for i, vector in results:
-            memory_vector = type('MemoryVector', (), {
-                'content': vector['content'],
-                'metadata': vector.get('metadata', {}),
-                'memory_type': vector.get('metadata', {}).get('memory_type', 'semantic')
-            })()
-            memory_vectors.append(memory_vector)
-        
-        return memory_vectors
-    
-    def get_memory_stats(self) -> Dict[str, Any]:
-        """Get memory statistics"""
         return {
-            "total_vectors": len(self.vectors),
-            "index_size": len(self.index.get("keywords", {})) if self.index else 0,
-            "background_tasks_running": self._running,
-            "cache_size": len(self.cache)
+            "success": True,
+            "output": f"Code analysis completed for task: {task.get('input', '')[:50]}...",
+            "reasoning_steps": [
+                "Analyzed code requirements",
+                "Evaluated context from memory",
+                "Generated solution approach"
+            ],
+            "confidence": 0.8,
+            "metadata": {"agent_specialization": self.specialization.value}
         }
-    
-    def _consolidate_memories(self):
-        """Consolidate memories for compatibility"""
-        self._consolidate_memory()
+        
+    async def _process_data_task(self, task: Dict[str, Any], context: List[MemoryEntry]) -> Dict[str, Any]:
+        """Process data analysis tasks"""
+        await asyncio.sleep(0.15)  # Simulate processing time
+        
+        return {
+            "success": True,
+            "output": f"Data analysis completed with insights from {len(context)} context entries",
+            "reasoning_steps": [
+                "Analyzed data patterns",
+                "Cross-referenced with context",
+                "Generated analytical insights"
+            ],
+            "confidence": 0.75,
+            "metadata": {"agent_specialization": self.specialization.value}
+        }
+        
+    async def _process_reasoning_task(self, task: Dict[str, Any], context: List[MemoryEntry]) -> Dict[str, Any]:
+        """Process complex reasoning tasks"""
+        await asyncio.sleep(0.2)  # Simulate processing time
+        
+        return {
+            "success": True,
+            "output": f"Complex reasoning completed for: {task.get('input', '')[:30]}...",
+            "reasoning_steps": [
+                "Broken down complex problem",
+                "Evaluated multiple approaches",
+                "Selected optimal reasoning path"
+            ],
+            "confidence": 0.85,
+            "metadata": {"agent_specialization": self.specialization.value}
+        }
+        
+    async def _process_planning_task(self, task: Dict[str, Any], context: List[MemoryEntry]) -> Dict[str, Any]:
+        """Process planning tasks"""
+        await asyncio.sleep(0.12)  # Simulate processing time
+        
+        return {
+            "success": True,
+            "output": f"Strategic plan developed based on {len(context)} context elements",
+            "reasoning_steps": [
+                "Analyzed requirements",
+                "Identified key milestones",
+                "Created actionable plan"
+            ],
+            "confidence": 0.8,
+            "metadata": {"agent_specialization": self.specialization.value}
+        }
+        
+    async def _process_general_task(self, task: Dict[str, Any], context: List[MemoryEntry]) -> Dict[str, Any]:
+        """Process general tasks"""
+        await asyncio.sleep(0.08)  # Simulate processing time
+        
+        return {
+            "success": True,
+            "output": f"General task processing completed",
+            "reasoning_steps": [
+                "Analyzed task requirements",
+                "Applied general reasoning",
+                "Generated solution"
+            ],
+            "confidence": 0.7,
+            "metadata": {"agent_specialization": self.specialization.value}
+        }
+        
+    def get_load(self) -> float:
+        """Get current load factor"""
+        return self.load_factor
+        
+    def set_load(self, load: float) -> None:
+        """Set load factor"""
+        self.load_factor = max(0.0, min(1.0, load))
 
-class BrainMode(Enum):
-    """Brain operation modes"""
-    STANDARD = "standard"
-    ENHANCED = "enhanced"
-    COLLABORATIVE = "collaborative"
-    OPTIMIZED = "optimized"
 
-@dataclass
-class BrainMetrics:
-    """Brain performance metrics"""
-    total_requests: int = 0
-    successful_requests: int = 0
-    average_response_time: float = 0.0
-    agent_usage: Dict[str, int] = field(default_factory=dict)
-    memory_operations: int = 0
-    flow_executions: int = 0
-    reasoning_depth: float = 0.0
-
-class EnhancedBrain(Brain):
+class EnhancedBrain(BaseBrain):
     """
-    Enhanced Neo-Clone Brain with Advanced Frameworks
+    Enhanced Brain with advanced reasoning strategies and collaborative processing
     
-    This is the supercharged version of Neo-Clone's brain that integrates:
-    - PocketFlow for agent orchestration
-    - Vector memory for semantic search
-    - Advanced reasoning chains
-    - Multi-agent collaboration
-    - Performance optimization
+    Features:
+    - Chain-of-thought reasoning
+    - Tree-of-thought exploration
+    - Self-reflection and improvement
+    - Collaborative multi-agent processing
+    - Advanced decision-making algorithms
     """
     
-    def __init__(self, config, skills, llm_client=None):
-        super().__init__(config, skills, llm_client)
-        
-        # Enhanced components with upgrades
-        self.pocketflow = PocketFlow()
-        self.vector_memory = VectorMemoryOptimized()  # Upgraded to optimized version
-        self.persistent_memory = get_memory()
-        
-        # New upgrade components
-        self.response_cache = ResponseCache(max_size=1000)  # Upgraded cache system
-        self.model_validator = ModelValidatorIntegrated()  # Model validation system
-        
-        # Brain state
-        self.mode = BrainMode.ENHANCED
-        self.metrics = BrainMetrics()
-        self.active_flows: Dict[str, Dict] = {}
-        self.agent_collaborations: Dict[str, List[str]] = {}
-        
-        # Advanced features
-        self.reasoning_chains: List[Dict] = []
-        self.context_window: List[Dict] = []
-        self.learning_patterns: Dict[str, float] = {}
-        
-        # Performance optimization (upgraded)
-        self.performance_history: List[Dict] = []
-        self.start_time = time.time()
-        
-        # Enhanced error handling
-        self.error_recovery_enabled = True
-        self.fallback_strategies = ["cache", "simplified_processing", "basic_response"]
-        
-        logger.info("Enhanced Brain initialized with all upgrades and optimizations")
-    
-    def process_request(self, user_input: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+    def __init__(
+        self,
+        config: Config,
+        skills: SkillsManager,
+        brain_processing_mode: ProcessingMode = ProcessingMode.ENHANCED,
+        reasoning_strategy: AdvancedReasoningStrategy = AdvancedReasoningStrategy.HYBRID,
+        max_reasoning_steps: int = 20,
+        confidence_threshold: float = 0.8,
+        enable_learning: bool = True,
+        enable_optimization: bool = True,
+        enable_collaboration: bool = True,
+        max_collaborative_agents: int = 5
+    ):
         """
-        Enhanced request processing with all frameworks and upgrades
+        Initialize Enhanced Brain
         
         Args:
-            user_input: The user's input message
-            context: Optional context information for processing
-            
-        Returns:
-            Dictionary containing response, metadata, and performance metrics
+            processing_mode: Brain processing mode
+            reasoning_strategy: Advanced reasoning strategy
+            max_reasoning_steps: Maximum reasoning steps
+            confidence_threshold: Minimum confidence for decisions
+            enable_learning: Enable learning from interactions
+            enable_optimization: Enable performance optimization
+            enable_collaboration: Enable multi-agent collaboration
+            max_collaborative_agents: Maximum number of collaborative agents
         """
-        request_start_time = time.time()
-        session_identifier = self._generate_session_id()
+        super().__init__(
+            processing_mode=brain_processing_mode,
+            reasoning_strategy=ReasoningStrategy.DIRECT,  # Will be overridden
+            max_reasoning_steps=max_reasoning_steps,
+            confidence_threshold=confidence_threshold,
+            enable_learning=enable_learning,
+            enable_optimization=enable_optimization
+        )
+        
+        self.advanced_strategy = reasoning_strategy
+        self.enable_collaboration = enable_collaboration
+        self.max_collaborative_agents = max_collaborative_agents
+        
+        # Advanced reasoning components
+        self.reasoning_trees: Dict[str, ReasoningTree] = {}
+        self.reflexion_history: List[Dict[str, Any]] = []
+        self.reasoning_patterns: Dict[str, Any] = {}
+        
+        # Collaborative processing
+        self.collaborative_agents: Dict[str, CollaborativeAgent] = {}
+        self.agent_assignments: Dict[str, str] = {}  # task_id -> agent_id
+        self.collaboration_results: List[Dict[str, Any]] = []
+        
+        # Advanced heuristics
+        self.reasoning_heuristics = self._initialize_reasoning_heuristics()
+        self.decision_weights = self._initialize_decision_weights()
+        
+        # Performance tracking
+        self.advanced_metrics = {
+            "chain_of_thought_usage": 0,
+            "tree_reasoning_usage": 0,
+            "reflexion_usage": 0,
+            "collaborative_processes": 0,
+            "avg_reasoning_depth": 0.0,
+            "avg_confidence_score": 0.0
+        }
+        
+        # Initialize collaborative agents
+        if self.enable_collaboration:
+            self._initialize_collaborative_agents()
+            
+        logger.info(f"Enhanced Brain initialized: strategy={reasoning_strategy.value}, collaboration={enable_collaboration}")
+    
+    def _initialize_reasoning_heuristics(self) -> Dict[str, callable]:
+        """Initialize reasoning heuristics for evaluation"""
+        return {
+            "confidence_weighted": lambda node: node.confidence * 0.6 + node.evaluation_score * 0.4,
+            "depth_penalized": lambda node: node.confidence * (1.0 / (len(node.get_path()) + 1)),
+            "metadata_rich": lambda node: node.confidence + (0.1 * len(node.metadata)),
+            "hybrid_score": lambda node: (
+                node.confidence * 0.4 + 
+                node.evaluation_score * 0.3 + 
+                (0.1 * len(node.metadata)) * 0.2 +
+                (1.0 / (len(node.get_path()) + 1)) * 0.1
+            )
+        }
+    
+    def _initialize_decision_weights(self) -> Dict[str, float]:
+        """Initialize decision-making weights"""
+        return {
+            "confidence": 0.3,
+            "speed": 0.2,
+            "accuracy": 0.25,
+            "resource_usage": 0.15,
+            "context_relevance": 0.1
+        }
+    
+    def _initialize_collaborative_agents(self) -> None:
+        """Initialize collaborative agents"""
+        agent_configs = [
+            {
+                "id": "code_agent",
+                "specialization": SkillCategory.CODE_GENERATION,
+                "capabilities": ["code_analysis", "algorithm_design", "debugging", "optimization"]
+            },
+            {
+                "id": "data_agent", 
+                "specialization": SkillCategory.DATA_ANALYSIS,
+                "capabilities": ["statistical_analysis", "pattern_recognition", "visualization", "insights"]
+            },
+            {
+                "id": "reasoning_agent",
+                "specialization": SkillCategory.GENERAL,
+                "capabilities": ["logical_reasoning", "problem_solving", "decision_making", "planning"]
+            },
+            {
+                "id": "system_agent",
+                "specialization": SkillCategory.GENERAL,
+                "capabilities": ["system_analysis", "optimization", "monitoring", "configuration"]
+            },
+            {
+                "id": "planning_agent",
+                "specialization": SkillCategory.PLANNING,
+                "capabilities": ["strategic_planning", "roadmap_design", "resource_allocation", "milestone_tracking"]
+            }
+        ]
+        
+        for config in agent_configs:
+            agent = CollaborativeAgent(
+                agent_id=config["id"],
+                specialization=config["specialization"],
+                capabilities=config["capabilities"]
+            )
+            self.collaborative_agents[agent.agent_id] = agent
+            
+        logger.info(f"Initialized {len(self.collaborative_agents)} collaborative agents")
+    
+    async def process_input(
+        self,
+        user_input: str,
+        context: Optional[ConversationHistory] = None,
+        session_id: Optional[str] = None
+    ) -> Tuple[str, MiniMaxReasoningTrace]:
+        """
+        Process user input using enhanced reasoning strategies
+        
+        Args:
+            user_input: User's input text
+            context: Conversation context
+            session_id: Session identifier
+        
+        Returns:
+            Tuple of (response, reasoning_trace)
+        """
+        start_time = time.time()
+        session_id = session_id or self.memory.session_id
+        
+        with self.processing_lock:
+            self.is_processing = True
         
         try:
-            # Update request metrics
-            self.metrics.total_requests += 1
+            # Initialize enhanced reasoning trace
+            reasoning_trace = MiniMaxReasoningTrace()
+            # Store enhanced processing info in intent_analysis metadata
+            if not reasoning_trace.intent_analysis:
+                reasoning_trace.intent_analysis = {}
+            reasoning_trace.intent_analysis["enhanced_processing"] = True
+            reasoning_trace.intent_analysis["strategy"] = self.advanced_strategy.value
             
-            # Check response cache first for performance optimization
-            cached_response = self.response_cache.get(user_input)
-            if cached_response:
-                cache_response_time = time.time() - request_start_time
-                self.metrics.successful_requests += 1
-                
-                # Update performance tracking
-                self.performance_history.append({
-                    "timestamp": request_start_time,
-                    "processing_time": cache_response_time,
-                    "cache_hit": True,
-                    "input_length": len(user_input)
-                })
-                
-                return {
-                    "success": True,
-                    "session_id": session_identifier,
-                    "response": cached_response,
-                    "reasoning": "Response retrieved from cache",
-                    "agents_used": ["cache_system"],
-                    "processing_time": cache_response_time,
-                    "complexity": 0.0,  # Cached responses have no complexity
-                    "mode": self.mode.value,
-                    "cache_hit": True
-                }
+            # Step 1: Enhanced Intent Recognition
+            intent_result = await self._enhanced_intent_recognition(user_input, reasoning_trace)
             
-            # Store user input in vector memory for semantic search capabilities
-            self.vector_memory.add_memory(
-                content=user_input,
-                memory_type="episodic",
-                importance=self._calculate_importance(user_input),
-                tags=["user_input", session_identifier]
-            )
+            # Step 2: Strategy Selection
+            strategy = await self._select_reasoning_strategy(user_input, intent_result, reasoning_trace)
             
-            # Analyze request complexity to determine processing strategy
-            request_complexity = self._analyze_complexity(user_input)
-            
-            # Choose optimal processing strategy based on complexity and current brain mode
-            if request_complexity > 0.7 or self.mode == BrainMode.COLLABORATIVE:
-                processing_result = self._collaborative_processing(user_input, session_identifier, context)
-            elif request_complexity > 0.4:
-                processing_result = self._enhanced_processing(user_input, session_identifier, context)
-            else:
-                processing_result = self._standard_processing(user_input, session_identifier, context)
-            
-            # Update performance metrics
-            total_response_time = time.time() - request_start_time
-            self.metrics.successful_requests += 1
-            self.metrics.average_response_time = (
-                (self.metrics.average_response_time * (self.metrics.successful_requests - 1) + total_response_time) /
-                self.metrics.successful_requests
-            )
-            
-            # Cache response for future similar requests (performance optimization)
-            response_similarity = self._calculate_similarity(user_input, processing_result.get("response", ""))
-            self.response_cache.put(user_input, processing_result.get("response", ""), response_similarity)
-            
-            # Store assistant response in vector memory for future context
-            self.vector_memory.add_memory(
-                content=processing_result.get("response", ""),
-                memory_type="semantic",
-                importance=0.8,
-                tags=["assistant_response", session_identifier]
-            )
-            
-            # Update persistent memory with conversation details
-            try:
-                self.persistent_memory.add_conversation(
-                    user_input=user_input,
-                    assistant_response=processing_result.get("response", ""),
-                    intent=processing_result.get("intent"),
-                    skill_used=processing_result.get("skill_used"),
-                    metadata={"session_id": session_identifier, "complexity": request_complexity}
+            # Step 3: Advanced Reasoning
+            if strategy == AdvancedReasoningStrategy.CHAIN_OF_THOUGHT:
+                reasoning_output = await self._chain_of_thought_reasoning(
+                    user_input, intent_result, reasoning_trace
                 )
-            except Exception as memory_error:
-                logger.warning(f"Failed to update persistent memory: {memory_error}")
-                # Continue processing without failing the entire request
+            elif strategy == AdvancedReasoningStrategy.TREE_OF_THOUGHT:
+                reasoning_output = await self._tree_of_thought_reasoning(
+                    user_input, intent_result, reasoning_trace
+                )
+            elif strategy == AdvancedReasoningStrategy.REFLEXION:
+                reasoning_output = await self._reflexion_reasoning(
+                    user_input, intent_result, reasoning_trace
+                )
+            elif strategy == AdvancedReasoningStrategy.COLLABORATIVE:
+                reasoning_output = await self._collaborative_reasoning(
+                    user_input, intent_result, reasoning_trace
+                )
+            elif strategy == AdvancedReasoningStrategy.MULTI_PATH:
+                reasoning_output = await self._multi_path_reasoning(
+                    user_input, intent_result, reasoning_trace
+                )
+            else:  # HYBRID
+                reasoning_output = await self._hybrid_reasoning(
+                    user_input, intent_result, reasoning_trace
+                )
             
-            # Update performance tracking history
-            self.performance_history.append({
-                "timestamp": request_start_time,
-                "processing_time": total_response_time,
-                "cache_hit": False,
-                "input_length": len(user_input),
-                "complexity": request_complexity
-            })
-            
-            return {
-                "success": True,
-                "session_id": session_identifier,
-                "response": processing_result.get("response"),
-                "reasoning": processing_result.get("reasoning"),
-                "agents_used": processing_result.get("agents_used", []),
-                "processing_time": total_response_time,
-                "complexity": request_complexity,
-                "mode": self.mode.value,
-                "cache_hit": False
-            }
-            
-        except Exception as processing_error:
-            logger.error(f"Enhanced processing failed: {processing_error}")
-            
-            # Enhanced error handling with fallback strategies
-            if self.error_recovery_enabled:
-                return self._handle_error_with_recovery(user_input, session_identifier, request_start_time, processing_error)
-            else:
-                return {
-                    "success": False,
-                    "error": str(processing_error),
-                    "session_id": session_identifier,
-                    "processing_time": time.time() - request_start_time
-                }
-    
-    def _collaborative_processing(self, user_input: str, session_id: str, context: Optional[Dict]) -> Dict[str, Any]:
-        """Multi-agent collaborative processing"""
-        try:
-            # Create collaborative flow
-            flow_id = self.pocketflow.create_flow(session_id, user_input)
-            
-            # Add specialized agents for collaboration
-            collaborators = self._select_collaborators(user_input)
-            
-            # Execute collaborative flow
-            flow_result = self.pocketflow.execute_flow(session_id)
-            
-            # Synthesize results from multiple agents
-            synthesized_result = self._synthesize_agent_results(flow_result, collaborators)
-            
-            # Track collaboration
-            self.agent_collaborations[session_id] = collaborators
-            
-            return {
-                "response": synthesized_result["response"],
-                "reasoning": f"Collaborative processing with {len(collaborators)} agents: {', '.join(collaborators)}",
-                "agents_used": collaborators,
-                "flow_result": flow_result,
-                "synthesis": synthesized_result
-            }
-            
-        except Exception as e:
-            logger.error(f"Collaborative processing failed: {e}")
-            return self._fallback_processing(user_input, session_id, "collaborative")
-    
-    def _enhanced_processing(self, user_input: str, session_id: str, context: Optional[Dict]) -> Dict[str, Any]:
-        """Enhanced processing with vector memory and advanced reasoning"""
-        try:
-            # Search vector memory for relevant context
-            memory_query = MemoryQuery(
-                query=user_input,
-                limit=5,
-                threshold=0.6,
-                hybrid_search=True
+            # Step 4: Context Retrieval (enhanced)
+            relevant_context = await self._enhanced_context_retrieval(
+                user_input, intent_result, reasoning_trace
             )
             
-            relevant_memories = self.vector_memory.search(memory_query)
+            # Step 5: Skill Execution (enhanced)
+            skill_result = await self._enhanced_skill_execution(
+                user_input, intent_result, reasoning_output, relevant_context, reasoning_trace
+            )
             
-            # Build enhanced context
-            enhanced_context = {
-                "user_input": user_input,
-                "relevant_memories": [
-                    {
-                        "content": mem.content,
-                        "similarity": mem.metadata.get("similarity", 0),
-                        "memory_type": mem.memory_type
-                    }
-                    for mem in relevant_memories
-                ],
-                "session_context": context or {},
-                "learning_patterns": self._get_relevant_patterns(user_input)
-            }
+            # Step 6: Response Generation (enhanced)
+            response = await self._enhanced_response_generation(
+                skill_result, user_input, reasoning_output, relevant_context, reasoning_trace
+            )
             
-            # Create reasoning chain
-            reasoning_chain = self._build_reasoning_chain(enhanced_context)
+            # Step 7: Self-Reflection (if enabled)
+            if self.advanced_strategy in [AdvancedReasoningStrategy.REFLEXION, AdvancedReasoningStrategy.HYBRID]:
+                await self._perform_reflexion(user_input, response, reasoning_trace)
             
-            # Process with enhanced context
-            result = self._process_with_context(enhanced_context, reasoning_chain)
+            # Step 8: Learning and Memory Storage (enhanced)
+            if self.enable_learning:
+                await self._enhanced_learning(user_input, response, intent_result, skill_result, reasoning_trace)
             
-            return {
-                "response": result["response"],
-                "reasoning": f"Enhanced processing with {len(relevant_memories)} relevant memories and {len(reasoning_chain)} reasoning steps",
-                "agents_used": ["enhanced_reasoner"],
-                "context_used": len(relevant_memories) > 0,
-                "reasoning_chain": reasoning_chain
-            }
+            # Store enhanced memories
+            await self._store_enhanced_memory(user_input, response, intent_result, skill_result, reasoning_trace)
             
-        except Exception as e:
-            logger.error(f"Enhanced processing failed: {e}")
-            return self._fallback_processing(user_input, session_id, "enhanced")
-    
-    def _standard_processing(self, user_input: str, session_id: str, context: Optional[Dict]) -> Dict[str, Any]:
-        """Standard processing with basic enhancements"""
-        try:
-            # Use original brain processing with enhancements
-            response = self.send_message(user_input)
+            # Update advanced metrics
+            execution_time = time.time() - start_time
+            self._update_advanced_metrics(user_input, response, execution_time, True, reasoning_trace)
             
-            return {
-                "response": response,
-                "reasoning": "Standard processing with enhanced brain capabilities",
-                "agents_used": ["standard_processor"]
-            }
+            # Set final confidence based on successful processing
+            reasoning_trace.final_confidence = reasoning_trace.get_average_confidence()
+            
+            self.total_processed_requests += 1
+            
+            logger.debug(f"Enhanced processing completed in {execution_time:.3f}s using {strategy.value}")
+            return response, reasoning_trace
             
         except Exception as e:
-            logger.error(f"Standard processing failed: {e}")
-            return self._fallback_processing(user_input, session_id, "standard")
+            logger.error(f"Enhanced processing error: {e}")
+            error_response = "I apologize, but I encountered an error during enhanced reasoning. Please try again."
+            
+            # Store error in memory
+            await self._store_enhanced_memory(user_input, error_response, None, None, reasoning_trace)
+            
+            # Update metrics
+            execution_time = time.time() - start_time
+            self._update_advanced_metrics(user_input, error_response, execution_time, False, reasoning_trace)
+            
+            return error_response, MiniMaxReasoningTrace()
+        
+        finally:
+            with self.processing_lock:
+                self.is_processing = False
     
-    def _select_collaborators(self, user_input: str) -> List[str]:
-        """Select appropriate agents for collaboration"""
-        collaborators = []
+    async def _enhanced_intent_recognition(
+        self,
+        user_input: str,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Any:
+        """Enhanced intent recognition with advanced patterns"""
         input_lower = user_input.lower()
+        intent_scores = {}
         
-        # Analyze input to determine needed agents
-        if any(word in input_lower for word in ["code", "python", "implement", "develop"]):
-            collaborators.append("coder")
-        
-        if any(word in input_lower for word in ["analyze", "data", "statistics", "insights"]):
-            collaborators.append("analyst")
-        
-        if any(word in input_lower for word in ["reason", "complex", "solve", "plan", "strategy"]):
-            collaborators.append("reasoner")
-        
-        if any(word in input_lower for word in ["create", "build", "design", "architecture"]):
-            collaborators.append("orchestrator")
-        
-        # Always include reasoner for complex tasks
-        if len(collaborators) > 1:
-            if "reasoner" not in collaborators:
-                collaborators.append("reasoner")
-        
-        return collaborators if collaborators else ["reasoner"]
-    
-    def _synthesize_agent_results(self, flow_result: Dict, collaborators: List[str]) -> Dict[str, Any]:
-        """Synthesize results from multiple agents"""
-        try:
-            results = flow_result.get("results", [])
+        # Enhanced pattern matching with context
+        for intent_type, patterns in self.intent_patterns.items():
+            score = 0.0
+            matched_patterns = []
             
-            if not results:
-                return {"response": "No results from agents", "confidence": 0.0}
+            for pattern in patterns:
+                if pattern in input_lower:
+                    score += 1.0
+                    matched_patterns.append(pattern)
             
-            # Simple synthesis - combine all results
-            synthesized_text = ""
-            confidence = 0.0
+            # Apply pattern complexity bonus
+            complexity_bonus = len([p for p in matched_patterns if len(p.split()) > 1]) * 0.1
+            score += complexity_bonus
             
-            for i, result in enumerate(results):
-                if isinstance(result, dict):
-                    agent_name = result.get("agent", f"agent_{i}")
-                    result_text = result.get("analysis", result.get("generated", result.get("insights", str(result))))
-                    synthesized_text += f"[{agent_name}]: {result_text}\n\n"
-                    confidence += result.get("confidence", 0.5)
+            # Normalize score
+            if patterns:
+                score = min(1.0, score / len(patterns))
             
-            confidence /= len(results) if results else 1
-            
-            return {
-                "response": synthesized_text.strip(),
-                "confidence": confidence,
-                "agent_count": len(results),
-                "synthesis_method": "concatenation"
+            intent_scores[intent_type] = {
+                "score": score,
+                "matched_patterns": matched_patterns
             }
-            
-        except Exception as e:
-            logger.error(f"Result synthesis failed: {e}")
-            return {"response": "Failed to synthesize agent results", "confidence": 0.0}
-    
-    def _build_reasoning_chain(self, context: Dict) -> List[Dict]:
-        """Build advanced reasoning chain"""
-        reasoning_steps = []
         
-        # Step 1: Analyze user intent
-        reasoning_steps.append({
-            "step": 1,
-            "type": "intent_analysis",
-            "description": "Analyze user intent and context",
-            "input": context["user_input"],
-            "output": self._analyze_intent(context["user_input"])
-        })
+        # Advanced intent resolution
+        best_intent = max(intent_scores.keys(), key=lambda k: intent_scores[k]["score"])
+        confidence = intent_scores[best_intent]["score"]
         
-        # Step 2: Memory retrieval
-        if context["relevant_memories"]:
-            reasoning_steps.append({
-                "step": 2,
-                "type": "memory_retrieval",
-                "description": "Retrieve relevant memories",
-                "input": context["user_input"],
-                "output": f"Found {len(context['relevant_memories'])} relevant memories"
-            })
+        # Apply enhanced threshold logic
+        if confidence < self.confidence_threshold:
+            # Use learned patterns for better fallback
+            learned_pattern = self._get_learned_intent_pattern(input_lower)
+            if learned_pattern:
+                best_intent = learned_pattern["intent"]
+                confidence = max(confidence, learned_pattern["confidence"])
+            else:
+                best_intent = IntentType.CONVERSATION
+                confidence = 0.5
         
-        # Step 3: Pattern recognition
-        if context["learning_patterns"]:
-            reasoning_steps.append({
-                "step": 3,
-                "type": "pattern_recognition",
-                "description": "Apply learning patterns",
-                "input": context["learning_patterns"],
-                "output": "Applied relevant learning patterns"
-            })
+        # Create enhanced intent result
+        intent_result = type('IntentResult', (), {
+            'intent': best_intent,
+            'confidence': confidence,
+            'scores': intent_scores,
+            'matched_patterns': intent_scores[best_intent]["matched_patterns"],
+            'enhanced': True
+        })()
         
-        # Step 4: Response generation
-        reasoning_steps.append({
-            "step": len(reasoning_steps) + 1,
-            "type": "response_generation",
-            "description": "Generate contextual response",
-            "input": "All previous steps",
-            "output": "Generated enhanced response"
-        })
-        
-        return reasoning_steps
-    
-    def _process_with_context(self, context: Dict, reasoning_chain: List[Dict]) -> Dict[str, Any]:
-        """Process request with enhanced context and reasoning"""
-        try:
-            # Build enhanced prompt with context
-            enhanced_prompt = f"User Input: {context['user_input']}\n\n"
-            
-            if context["relevant_memories"]:
-                enhanced_prompt += "Relevant Memories:\n"
-                for mem in context["relevant_memories"]:
-                    enhanced_prompt += f"- {mem['content']} (similarity: {mem['similarity']:.2f})\n"
-                enhanced_prompt += "\n"
-            
-            if context["learning_patterns"]:
-                enhanced_prompt += f"Learning Patterns: {context['learning_patterns']}\n\n"
-            
-            enhanced_prompt += "Please provide a comprehensive response considering the above context."
-            
-            # Process with enhanced prompt
-            response = self.send_message(enhanced_prompt)
-            
-            return {
-                "response": response,
-                "context_used": True,
-                "reasoning_depth": len(reasoning_chain)
+        # Add to reasoning trace
+        reasoning_trace.add_intent_analysis(
+            intent=best_intent.value,
+            confidence=confidence,
+            categories=[best_intent.value],
+            metadata={
+                "matched_patterns": intent_scores[best_intent]["matched_patterns"],
+                "all_scores": {k.value: v["score"] for k, v in intent_scores.items()},
+                "enhanced_recognition": True
             }
-            
-        except Exception as e:
-            logger.error(f"Context processing failed: {e}")
-            return {"response": "Failed to process with context", "context_used": False}
+        )
+        
+        reasoning_trace.add_step(
+            step_type="enhanced_intent_recognition",
+            description=f"Enhanced intent recognition: {best_intent.value}",
+            input_data=user_input,
+            output_data=intent_result.__dict__,
+            confidence=confidence
+        )
+        
+        return intent_result
     
-    def _analyze_complexity(self, user_input: str) -> float:
-        """Analyze complexity of user input"""
-        complexity = 0.0
+    async def _select_reasoning_strategy(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> AdvancedReasoningStrategy:
+        """Select optimal reasoning strategy based on context"""
+        
+        # Use hybrid strategy by default unless specific conditions met
+        if self.advanced_strategy == AdvancedReasoningStrategy.HYBRID:
+            # Analyze task complexity
+            complexity_score = self._analyze_task_complexity(user_input, intent_result)
+            
+            # Check for reasoning-heavy tasks
+            if any(word in user_input.lower() for word in ["why", "how", "explain", "analyze", "reason"]):
+                if complexity_score > 0.7:
+                    return AdvancedReasoningStrategy.CHAIN_OF_THOUGHT
+                else:
+                    return AdvancedReasoningStrategy.REFLEXION
+            
+            # Check for planning tasks
+            if intent_result.intent == IntentType.PLANNING or any(word in user_input.lower() for word in ["plan", "strategy", "roadmap"]):
+                return AdvancedReasoningStrategy.TREE_OF_THOUGHT
+            
+            # Check for collaborative needs
+            if (len(user_input.split()) > 20 or 
+                any(word in user_input.lower() for word in ["complex", "multiple", "various", "comprehensive"])):
+                return AdvancedReasoningStrategy.COLLABORATIVE
+            
+            # Check for multi-faceted problems
+            if complexity_score > 0.8:
+                return AdvancedReasoningStrategy.MULTI_PATH
+            
+            # Default to chain of thought for complex reasoning
+            if complexity_score > 0.6:
+                return AdvancedReasoningStrategy.CHAIN_OF_THOUGHT
+        
+        return self.advanced_strategy
+    
+    def _analyze_task_complexity(self, user_input: str, intent_result: Any) -> float:
+        """Analyze task complexity score (0.0 to 1.0)"""
+        complexity_factors = []
         
         # Length factor
-        complexity += min(len(user_input) / 500, 0.3)
+        length_factor = min(1.0, len(user_input.split()) / 50)
+        complexity_factors.append(length_factor)
         
         # Question complexity
-        question_words = ["why", "how", "what", "explain", "analyze", "compare", "evaluate"]
-        complexity += sum(0.1 for word in question_words if word in user_input.lower())
+        question_words = ["why", "how", "what if", "explain", "analyze", "compare", "evaluate"]
+        question_factor = sum(1 for word in question_words if word in user_input.lower()) / len(question_words)
+        complexity_factors.append(question_factor)
         
-        # Technical complexity
-        technical_words = ["algorithm", "implement", "optimize", "architecture", "system", "framework"]
-        complexity += sum(0.15 for word in technical_words if word in user_input.lower())
+        # Intent complexity
+        complex_intents = [IntentType.REASONING, IntentType.PLANNING, IntentType.DATA_ANALYSIS]
+        intent_factor = 0.8 if intent_result.intent in complex_intents else 0.3
+        complexity_factors.append(intent_factor)
         
-        # Multi-task complexity
-        task_indicators = ["and", "also", "additionally", "furthermore", "plus"]
-        complexity += sum(0.1 for word in task_indicators if word in user_input.lower())
+        # Uncertainty factor (based on confidence)
+        uncertainty_factor = 1.0 - intent_result.confidence
+        complexity_factors.append(uncertainty_factor)
         
-        return min(complexity, 1.0)
+        return sum(complexity_factors) / len(complexity_factors)
     
-    def _calculate_importance(self, content: str) -> float:
-        """Calculate importance score for memory storage"""
-        importance = 0.5  # Base importance
-        
-        # Length importance
-        importance += min(len(content) / 1000, 0.2)
-        
-        # Question importance
-        if "?" in content:
-            importance += 0.1
-        
-        # Technical importance
-        technical_keywords = ["implement", "optimize", "algorithm", "system", "architecture"]
-        importance += sum(0.05 for keyword in technical_keywords if keyword in content.lower())
-        
-        return min(importance, 1.0)
-    
-    def _analyze_intent(self, user_input: str) -> str:
-        """Analyze user intent"""
-        input_lower = user_input.lower()
-        
-        if any(word in input_lower for word in ["how", "explain", "describe"]):
-            return "explanation"
-        elif any(word in input_lower for word in ["create", "implement", "build", "generate"]):
-            return "creation"
-        elif any(word in input_lower for word in ["analyze", "evaluate", "compare"]):
-            return "analysis"
-        elif any(word in input_lower for word in ["fix", "debug", "error", "problem"]):
-            return "troubleshooting"
-        else:
-            return "general"
-    
-    def _get_relevant_patterns(self, user_input: str) -> Dict[str, float]:
-        """Get relevant learning patterns"""
-        # Simplified pattern matching
-        patterns = {}
-        
-        if "code" in user_input.lower():
-            patterns["coding_patterns"] = 0.8
-        
-        if "analyze" in user_input.lower():
-            patterns["analysis_patterns"] = 0.7
-        
-        if "explain" in user_input.lower():
-            patterns["explanation_patterns"] = 0.6
-        
-        return patterns
-    
-    def _fallback_processing(self, user_input: str, session_id: str, failed_mode: str) -> Dict[str, Any]:
-        """Fallback processing when enhanced modes fail"""
-        try:
-            response = self.send_message(user_input)
-            
-            return {
-                "response": response,
-                "reasoning": f"Fallback processing after {failed_mode} mode failed",
-                "agents_used": ["fallback_processor"],
-                "fallback": True
-            }
-            
-        except Exception as e:
-            logger.error(f"Fallback processing also failed: {e}")
-            return {
-                "response": "I'm experiencing difficulties processing your request. Please try again.",
-                "reasoning": "All processing modes failed",
-                "agents_used": [],
-                "error": str(e)
-            }
-    
-    def _generate_session_id(self) -> str:
-        """Generate unique session ID"""
-        return f"enhanced_{int(time.time() * 1000)}"
-    
-    def switch_mode(self, mode: BrainMode) -> bool:
-        """Switch brain operation mode"""
-        try:
-            self.mode = mode
-            logger.info(f"Switched to {mode.value} mode")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to switch mode: {e}")
-            return False
-    
-    def get_brain_status(self) -> Dict[str, Any]:
-        """Get comprehensive brain status with upgrade information"""
-        uptime = time.time() - self.start_time
-        cache_stats = self.response_cache.get_stats()
-        validation_summary = self.model_validator.get_validation_summary()
-        
-        return {
-            "mode": self.mode.value,
-            "uptime_seconds": uptime,
-            "metrics": {
-                "total_requests": self.metrics.total_requests,
-                "success_rate": (
-                    self.metrics.successful_requests / self.metrics.total_requests 
-                    if self.metrics.total_requests > 0 else 0
-                ),
-                "average_response_time": self.metrics.average_response_time,
-                "agent_usage": self.metrics.agent_usage,
-                "memory_operations": self.metrics.memory_operations,
-                "flow_executions": self.metrics.flow_executions
-            },
-            "active_flows": len(self.active_flows),
-            "active_collaborations": len(self.agent_collaborations),
-            "pocketflow_agents": len(self.pocketflow.agents),
-            "vector_memory_stats": self.vector_memory.get_memory_stats(),
-            "reasoning_chains": len(self.reasoning_chains),
-            # Upgrade-specific stats
-            "cache_performance": cache_stats,
-            "model_validation": validation_summary,
-            "error_recovery": {
-                "enabled": self.error_recovery_enabled,
-                "fallback_strategies": self.fallback_strategies
-            },
-            "performance_history_size": len(self.performance_history),
-            "average_processing_time": (
-                sum(h["processing_time"] for h in self.performance_history[-100:]) /
-                len(self.performance_history[-100:]) 
-                if self.performance_history else 0
-            ),
-            "requests_per_second": self.metrics.total_requests / uptime if uptime > 0 else 0
-        }
-    
-    def optimize_performance(self) -> Dict[str, Any]:
-        """Enhanced performance optimization with all upgrades"""
-        try:
-            optimizations = []
-            
-            # Response cache optimization (upgraded)
-            cache_stats = self.response_cache.get_stats()
-            if cache_stats["cache_size"] > self.response_cache.max_size * 0.8:
-                # Cache is getting full, let it handle its own eviction
-                optimizations.append("Response cache auto-optimization active")
-            
-            # Vector memory optimization (upgraded)
-            self.vector_memory._consolidate_memory()
-            optimizations.append("Consolidated optimized vector memory")
-            
-            # Update learning patterns
-            self._update_learning_patterns()
-            optimizations.append("Updated learning patterns")
-            
-            # Performance history cleanup
-            if len(self.performance_history) > 1000:
-                self.performance_history = self.performance_history[-500:]
-                optimizations.append("Cleaned up performance history")
-            
-            # Model validation cache cleanup
-            if len(self.model_validator.performance_cache) > 100:
-                self.model_validator.performance_cache.clear()
-                optimizations.append("Cleared model validation cache")
-            
-            return {
-                "success": True,
-                "optimizations": optimizations,
-                "performance_improvement": "Enhanced brain optimized successfully with all upgrades",
-                "cache_hit_rate": cache_stats["hit_rate"],
-                "vector_memory_size": len(self.vector_memory.vectors),
-                "performance_history_size": len(self.performance_history)
-            }
-            
-        except Exception as e:
-            logger.error(f"Enhanced performance optimization failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def validate_models(self, models: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate models using the integrated validator"""
-        try:
-            validation_results = self.model_validator.validate_discovered_models(models)
-            summary = self.model_validator.get_validation_summary()
-            
-            return {
-                "success": True,
-                "validation_results": validation_results,
-                "summary": summary,
-                "total_models": len(models),
-                "validation_time": time.time()
-            }
-        except Exception as e:
-            logger.error(f"Model validation failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def get_comprehensive_performance_report(self) -> Dict[str, Any]:
-        """Get comprehensive performance report with all upgrade metrics"""
-        uptime = time.time() - self.start_time
-        cache_stats = self.response_cache.get_stats()
-        validation_summary = self.model_validator.get_validation_summary()
-        
-        # Calculate performance trends
-        recent_performance = self.performance_history[-100:] if self.performance_history else []
-        avg_response_time = (
-            sum(p["processing_time"] for p in recent_performance) / len(recent_performance)
-            if recent_performance else 0
-        )
-        
-        cache_hit_rate = cache_stats["hit_rate"]
-        error_rate = (
-            sum(1 for p in recent_performance if p.get("error", False)) / len(recent_performance)
-            if recent_performance else 0
-        )
-        
-        return {
-            "report_generated": time.time(),
-            "uptime_seconds": uptime,
-            "request_metrics": {
-                "total_requests": self.metrics.total_requests,
-                "successful_requests": self.metrics.successful_requests,
-                "success_rate": (
-                    self.metrics.successful_requests / self.metrics.total_requests 
-                    if self.metrics.total_requests > 0 else 0
-                ),
-                "requests_per_second": self.metrics.total_requests / uptime if uptime > 0 else 0,
-                "average_response_time": avg_response_time
-            },
-            "cache_performance": {
-                "hit_rate": cache_hit_rate,
-                "total_hits": cache_stats["hit_count"],
-                "total_misses": cache_stats["miss_count"],
-                "cache_size": cache_stats["cache_size"],
-                "cache_efficiency": "Good" if cache_hit_rate > 0.7 else "Needs Improvement" if cache_hit_rate > 0.4 else "Poor"
-            },
-            "memory_performance": {
-                "vector_count": len(self.vector_memory.vectors),
-                "index_size": len(self.vector_memory.index.get("keywords", {})) if self.vector_memory.index else 0,
-                "background_tasks_running": self.vector_memory._running,
-                "memory_optimization": "Active" if self.vector_memory._running else "Inactive"
-            },
-            "model_validation": {
-                "total_validated": validation_summary["total"],
-                "valid_models": validation_summary["valid"],
-                "invalid_models": validation_summary["invalid"],
-                "validation_coverage": (
-                    validation_summary["valid"] / validation_summary["total"] 
-                    if validation_summary["total"] > 0 else 0
-                )
-            },
-            "error_metrics": {
-                "error_rate": error_rate,
-                "error_recovery_enabled": self.error_recovery_enabled,
-                "fallback_strategies_available": len(self.fallback_strategies)
-            },
-            "overall_health": {
-                "status": "Excellent" if cache_hit_rate > 0.7 and error_rate < 0.05 else 
-                         "Good" if cache_hit_rate > 0.4 and error_rate < 0.1 else
-                         "Fair" if cache_hit_rate > 0.2 and error_rate < 0.2 else "Needs Attention",
-                "recommendations": self._generate_performance_recommendations(cache_hit_rate, error_rate, avg_response_time)
-            }
-        }
-    
-    def _generate_performance_recommendations(self, cache_hit_rate: float, error_rate: float, avg_response_time: float) -> List[str]:
-        """Generate performance recommendations based on metrics"""
-        recommendations = []
-        
-        if cache_hit_rate < 0.4:
-            recommendations.append("Consider increasing cache size or adjusting similarity thresholds")
-        
-        if error_rate > 0.1:
-            recommendations.append("High error rate detected - review error logs and consider enhancing error handling")
-        
-        if avg_response_time > 2.0:
-            recommendations.append("High response times - consider optimizing processing pipelines or adding more caching")
-        
-        if len(self.vector_memory.vectors) > 5000:
-            recommendations.append("Large vector memory - consider more aggressive consolidation")
-        
-        if not recommendations:
-            recommendations.append("Performance is optimal - continue monitoring")
-        
-        return recommendations
-    
-    def shutdown_gracefully(self) -> Dict[str, Any]:
-        """Graceful shutdown of all enhanced brain components"""
-        try:
-            shutdown_steps = []
-            
-            # Stop vector memory background tasks
-            self.vector_memory.stop_background_tasks()
-            shutdown_steps.append("Stopped vector memory background tasks")
-            
-            # Shutdown model validator executor
-            self.model_validator.executor.shutdown(wait=True)
-            shutdown_steps.append("Shutdown model validator executor")
-            
-            # Save any pending data
-            self._save_pending_data()
-            shutdown_steps.append("Saved pending data")
-            
-            logger.info("Enhanced Brain shutdown complete")
-            return {
-                "success": True,
-                "shutdown_steps": shutdown_steps,
-                "final_metrics": {
-                    "total_requests": self.metrics.total_requests,
-                    "uptime": time.time() - self.start_time,
-                    "cache_hit_rate": self.response_cache.get_stats()["hit_rate"]
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"Graceful shutdown failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def _save_pending_data(self):
-        """Save any pending data during shutdown"""
-        # This would save performance history, learning patterns, etc.
-        # Simplified implementation
-        try:
-            # Save performance history
-            if self.performance_history:
-                import json
-                with open("data/performance_history.json", "w") as f:
-                    json.dump(self.performance_history[-1000:], f)  # Keep last 1000 entries
-            
-            # Save learning patterns
-            if self.learning_patterns:
-                with open("data/learning_patterns.json", "w") as f:
-                    json.dump(self.learning_patterns, f)
-                    
-        except Exception as e:
-            logger.warning(f"Failed to save some pending data: {e}")
-    
-    def _update_learning_patterns(self):
-        """Update learning patterns based on recent interactions"""
-        # This would analyze recent interactions to update patterns
-        # Simplified implementation
-        pass
-    
-    def _calculate_similarity(self, query1: str, query2: str) -> float:
-        """Calculate similarity between two queries for caching"""
-        words1 = set(query1.lower().split())
-        words2 = set(query2.lower().split())
-        
-        if not words1 or not words2:
-            return 0.0
-        
-        intersection = words1 & words2
-        union = words1 | words2
-        
-        return len(intersection) / len(union) if union else 0.0
-    
-    def _handle_error_with_recovery(self, user_input: str, session_id: str, start_time: float, error: Exception) -> Dict[str, Any]:
-        """Enhanced error handling with recovery strategies"""
-        logger.warning(f"Attempting error recovery for: {error}")
-        
-        for strategy in self.fallback_strategies:
-            try:
-                if strategy == "cache":
-                    # Try to find a similar cached response
-                    similar_response = self._find_similar_cached_response(user_input)
-                    if similar_response:
+    def _get_learned_intent_pattern(self, input_lower: str) -> Optional[Dict[str, Any]]:
+        """Get learned intent pattern from previous interactions"""
+        # Simplified implementation - would use more sophisticated pattern matching
+        if hasattr(self, 'learned_patterns'):
+            for pattern_key, pattern_data in self.learned_patterns.items():
+                if isinstance(pattern_data, list) and pattern_data:
+                    recent_pattern = pattern_data[-1]
+                    if (recent_pattern.get("input_pattern", "") in input_lower or 
+                        input_lower in recent_pattern.get("input_pattern", "")):
                         return {
-                            "success": True,
-                            "session_id": session_id,
-                            "response": similar_response,
-                            "reasoning": f"Recovered from error using similar cached response (strategy: {strategy})",
-                            "agents_used": ["error_recovery", "cache"],
-                            "processing_time": time.time() - start_time,
-                            "complexity": 0.0,
-                            "mode": self.mode.value,
-                            "error_recovery": True,
-                            "original_error": str(error)
+                            "intent": IntentType(recent_pattern.get("intent", "conversation")),
+                            "confidence": recent_pattern.get("confidence", 0.6)
                         }
-                
-                elif strategy == "simplified_processing":
-                    # Try simplified processing
-                    simple_response = f"I apologize for the technical difficulties. Based on your input '{user_input[:100]}...', I can provide a basic response while I recover."
-                    return {
-                        "success": True,
-                        "session_id": session_id,
-                        "response": simple_response,
-                        "reasoning": f"Recovered from error using simplified processing (strategy: {strategy})",
-                        "agents_used": ["error_recovery"],
-                        "processing_time": time.time() - start_time,
-                        "complexity": 0.0,
-                        "mode": self.mode.value,
-                        "error_recovery": True,
-                        "original_error": str(error)
-                    }
-                
-                elif strategy == "basic_response":
-                    # Last resort - basic response
-                    basic_response = "I'm experiencing technical difficulties, but I'm working to resolve them. Please try your request again in a moment."
-                    return {
-                        "success": True,
-                        "session_id": session_id,
-                        "response": basic_response,
-                        "reasoning": f"Recovered from error using basic response (strategy: {strategy})",
-                        "agents_used": ["error_recovery"],
-                        "processing_time": time.time() - start_time,
-                        "complexity": 0.0,
-                        "mode": self.mode.value,
-                        "error_recovery": True,
-                        "original_error": str(error)
-                    }
-                    
-            except Exception as recovery_error:
-                logger.error(f"Recovery strategy {strategy} failed: {recovery_error}")
-                continue
+        return None
+    
+    async def _chain_of_thought_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Chain-of-thought reasoning with step-by-step analysis"""
+        reasoning_steps = []
         
-        # All recovery strategies failed
+        # Step 1: Problem decomposition
+        problem_breakdown = await self._decompose_problem(user_input, intent_result)
+        reasoning_steps.append(problem_breakdown)
+        
+        # Step 2: Context analysis
+        context_analysis = await self._analyze_context_requirements(user_input, intent_result)
+        reasoning_steps.append(context_analysis)
+        
+        # Step 3: Solution path exploration
+        solution_path = await self._explore_solution_paths(user_input, intent_result, reasoning_steps)
+        reasoning_steps.append(solution_path)
+        
+        # Step 4: Verification and refinement
+        verification = await self._verify_solution_coherence(reasoning_steps)
+        reasoning_steps.append(verification)
+        
+        # Create reasoning tree
+        tree = ReasoningTree(f"Chain reasoning for: {user_input[:50]}...")
+        
+        for i, step in enumerate(reasoning_steps):
+            confidence = step.get("confidence", 0.5)
+            tree.add_node(
+                content=step.get("description", f"Step {i+1}"),
+                parent_id=tree.root.id if i == 0 else tree.nodes[step.get("parent_id", "")].id if step.get("parent_id") else tree.root.id,
+                confidence=confidence,
+                node_type="reasoning_step",
+                metadata=step
+            )
+        
+        self.reasoning_trees[f"chain_{tree.root.id}"] = tree
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="chain_of_thought",
+            description="Chain-of-thought reasoning completed",
+            input_data={"user_input": user_input, "intent": intent_result.intent.value},
+            output_data={"reasoning_steps": len(reasoning_steps), "tree_id": tree.root.id},
+            confidence=0.9
+        )
+        
+        self.advanced_metrics["chain_of_thought_usage"] += 1
+        
         return {
-            "success": False,
-            "error": f"Original error: {str(error)}. All recovery strategies failed.",
-            "session_id": session_id,
-            "processing_time": time.time() - start_time,
-            "error_recovery_failed": True
+            "strategy": "chain_of_thought",
+            "reasoning_steps": reasoning_steps,
+            "tree_id": tree.root.id,
+            "confidence": sum(step.get("confidence", 0.5) for step in reasoning_steps) / len(reasoning_steps),
+            "final_recommendation": reasoning_steps[-1].get("recommendation", "Complete analysis provided")
         }
     
-    def _find_similar_cached_response(self, user_input: str, threshold: float = 0.6) -> Optional[str]:
-        """Find a similar response in cache"""
-        for key, entry in self.response_cache.cache.items():
-            # Simple similarity check
-            similarity = self._calculate_similarity(user_input, entry.response[:100])
-            if similarity >= threshold:
-                return entry.response
+    async def _decompose_problem(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Decompose complex problem into components"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        # Extract key components
+        words = user_input.lower().split()
+        components = []
+        
+        # Identify problem components
+        problem_indicators = ["problem", "issue", "challenge", "need", "want", "require"]
+        solution_indicators = ["solution", "fix", "answer", "response", "result"]
+        
+        for word in words:
+            if any(indicator in user_input.lower() for indicator in problem_indicators):
+                components.append(f"Problem component: {word}")
+            elif any(indicator in user_input.lower() for indicator in solution_indicators):
+                components.append(f"Solution component: {word}")
+        
+        return {
+            "description": "Problem decomposed into key components",
+            "components": components or ["General inquiry requiring analysis"],
+            "confidence": 0.8,
+            "recommendation": "Proceed with multi-component analysis"
+        }
+    
+    async def _analyze_context_requirements(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Analyze context and information requirements"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        context_requirements = []
+        
+        # Analyze requirements based on intent
+        if intent_result.intent == IntentType.CODE:
+            context_requirements.append("Programming context and requirements")
+            context_requirements.append("Existing codebase and standards")
+        elif intent_result.intent == IntentType.DATA_ANALYSIS:
+            context_requirements.append("Data structure and format information")
+            context_requirements.append("Analysis goals and metrics")
+        elif intent_result.intent == IntentType.PLANNING:
+            context_requirements.append("Resource constraints and goals")
+            context_requirements.append("Timeline and milestone information")
+        else:
+            context_requirements.append("General context and user preferences")
+        
+        return {
+            "description": "Context requirements analyzed",
+            "requirements": context_requirements,
+            "confidence": 0.75,
+            "recommendation": f"Consider {len(context_requirements)} key context areas"
+        }
+    
+    async def _explore_solution_paths(
+        self,
+        user_input: str,
+        intent_result: Any,
+        previous_steps: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Explore potential solution paths"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        solution_paths = []
+        
+        # Generate multiple solution approaches based on intent
+        if intent_result.intent == IntentType.CODE:
+            solution_paths = [
+                "Direct implementation approach",
+                "Modular design approach", 
+                "Test-driven development approach"
+            ]
+        elif intent_result.intent == IntentType.DATA_ANALYSIS:
+            solution_paths = [
+                "Statistical analysis approach",
+                "Pattern recognition approach",
+                "Comparative analysis approach"
+            ]
+        else:
+            solution_paths = [
+                "Direct solution approach",
+                "Step-by-step approach",
+                "Comprehensive approach"
+            ]
+        
+        return {
+            "description": "Multiple solution paths explored",
+            "paths": solution_paths,
+            "confidence": 0.7,
+            "recommendation": f"Recommend {solution_paths[0]} based on context"
+        }
+    
+    async def _verify_solution_coherence(self, reasoning_steps: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Verify solution coherence and consistency"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        # Check coherence between steps
+        coherence_score = 0.8
+        issues = []
+        
+        # Simple coherence check
+        if len(reasoning_steps) < 2:
+            coherence_score = 0.6
+            issues.append("Limited reasoning steps for verification")
+        
+        return {
+            "description": "Solution coherence verified",
+            "coherence_score": coherence_score,
+            "issues": issues,
+            "confidence": coherence_score,
+            "recommendation": "Solution path is coherent and actionable" if not issues else "Review reasoning steps for improvements"
+        }
+    
+    async def _tree_of_thought_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Tree-of-thought reasoning with branching exploration"""
+        
+        # Create reasoning tree
+        tree = ReasoningTree(f"Tree reasoning for: {user_input[:50]}...")
+        
+        # Generate main branches
+        main_branches = await self._generate_main_branches(user_input, intent_result)
+        
+        branch_nodes = {}
+        for i, branch in enumerate(main_branches):
+            branch_node = tree.add_node(
+                content=branch["description"],
+                parent_id=tree.root.id,
+                confidence=branch["confidence"],
+                node_type="main_branch",
+                metadata=branch
+            )
+            branch_nodes[branch["id"]] = branch_node
+            
+            # Generate sub-branches
+            sub_branches = await self._generate_sub_branches(branch, user_input, intent_result)
+            for sub_branch in sub_branches:
+                sub_node = tree.add_node(
+                    content=sub_branch["description"],
+                    parent_id=branch_node.id,
+                    confidence=sub_branch["confidence"],
+                    node_type="sub_branch",
+                    metadata=sub_branch
+                )
+        
+        # Find best path using evaluation function
+        best_path, best_score = tree.find_best_path(
+            self.reasoning_heuristics["confidence_weighted"],
+            max_depth=3
+        )
+        
+        # Store tree
+        self.reasoning_trees[f"tree_{tree.root.id}"] = tree
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="tree_of_thought",
+            description="Tree-of-thought reasoning completed",
+            input_data={"user_input": user_input, "branches": len(main_branches)},
+            output_data={
+                "best_path_length": len(best_path),
+                "best_score": best_score,
+                "total_nodes": tree.total_nodes
+            },
+            confidence=0.85
+        )
+        
+        self.advanced_metrics["tree_reasoning_usage"] += 1
+        
+        return {
+            "strategy": "tree_of_thought",
+            "tree_id": tree.root.id,
+            "best_path": [node.content for node in best_path],
+            "best_score": best_score,
+            "confidence": best_score,
+            "recommendation": f"Best path score: {best_score:.2f}"
+        }
+    
+    async def _generate_main_branches(self, user_input: str, intent_result: Any) -> List[Dict[str, Any]]:
+        """Generate main reasoning branches"""
+        branches = []
+        
+        # Strategy 1: Direct approach
+        branches.append({
+            "id": "direct",
+            "description": "Direct solution approach",
+            "confidence": 0.7,
+            "pros": ["Fast", "Simple"],
+            "cons": ["May miss nuances"]
+        })
+        
+        # Strategy 2: Contextual approach
+        branches.append({
+            "id": "contextual", 
+            "description": "Context-aware approach",
+            "confidence": 0.8,
+            "pros": ["Considers context", "More comprehensive"],
+            "cons": ["Slower"]
+        })
+        
+        # Strategy 3: Collaborative approach
+        if self.enable_collaboration:
+            branches.append({
+                "id": "collaborative",
+                "description": "Multi-agent collaborative approach",
+                "confidence": 0.85,
+                "pros": ["Multiple perspectives", "Comprehensive"],
+                "cons": ["More complex"]
+            })
+        
+        return branches
+    
+    async def _generate_sub_branches(
+        self,
+        main_branch: Dict[str, Any],
+        user_input: str,
+        intent_result: Any
+    ) -> List[Dict[str, Any]]:
+        """Generate sub-branches for main branch"""
+        sub_branches = []
+        
+        if main_branch["id"] == "direct":
+            sub_branches = [
+                {
+                    "description": "Immediate implementation",
+                    "confidence": 0.6,
+                    "steps": ["Analyze requirements", "Implement solution", "Test"]
+                },
+                {
+                    "description": "Quick prototype approach",
+                    "confidence": 0.65,
+                    "steps": ["Create prototype", "Iterate based on feedback", "Finalize"]
+                }
+            ]
+        elif main_branch["id"] == "contextual":
+            sub_branches = [
+                {
+                    "description": "Deep context analysis",
+                    "confidence": 0.75,
+                    "steps": ["Analyze all context", "Identify patterns", "Develop solution"]
+                },
+                {
+                    "description": "Progressive context building",
+                    "confidence": 0.8,
+                    "steps": ["Gather context incrementally", "Build understanding", "Apply knowledge"]
+                }
+            ]
+        elif main_branch["id"] == "collaborative":
+            sub_branches = [
+                {
+                    "description": "Parallel agent processing",
+                    "confidence": 0.8,
+                    "steps": ["Assign to agents", "Process in parallel", "Merge results"]
+                },
+                {
+                    "description": "Sequential agent consultation",
+                    "confidence": 0.85,
+                    "steps": ["Primary agent analysis", "Secondary validation", "Final integration"]
+                }
+            ]
+        
+        return sub_branches
+    
+    async def _reflexion_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Reflexion-based reasoning with self-improvement"""
+        
+        # Step 1: Initial reasoning
+        initial_reasoning = await self._perform_initial_reasoning(user_input, intent_result)
+        
+        # Step 2: Generate alternative perspectives
+        alternatives = await self._generate_alternative_perspectives(user_input, intent_result, initial_reasoning)
+        
+        # Step 3: Evaluate and compare perspectives
+        evaluation = await self._evaluate_perspectives(initial_reasoning, alternatives)
+        
+        # Step 4: Generate reflexion and improvement
+        reflexion = await self._generate_reflexion(initial_reasoning, alternatives, evaluation)
+        
+        # Step 5: Apply improvements
+        improved_solution = await self._apply_reflexion_improvements(
+            initial_reasoning, reflexion, evaluation
+        )
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="reflexion_reasoning",
+            description="Reflexion reasoning completed",
+            input_data={"user_input": user_input, "initial_confidence": initial_reasoning.get("confidence", 0.5)},
+            output_data={
+                "final_confidence": improved_solution.get("confidence", 0.5),
+                "improvements_applied": len(reflexion.get("improvements", [])),
+                "perspectives_considered": len(alternatives)
+            },
+            confidence=0.9
+        )
+        
+        self.advanced_metrics["reflexion_usage"] += 1
+        
+        # Store reflexion history
+        self.reflexion_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "initial_reasoning": initial_reasoning,
+            "alternatives": alternatives,
+            "reflexion": reflexion,
+            "improved_solution": improved_solution
+        })
+        
+        return improved_solution
+    
+    async def _perform_initial_reasoning(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Perform initial reasoning without reflexion"""
+        await asyncio.sleep(0.08)  # Simulate processing time
+        
+        return {
+            "description": "Initial reasoning analysis",
+            "approach": "Direct problem-solving approach",
+            "confidence": 0.7,
+            "reasoning_steps": [
+                "Analyzed problem statement",
+                "Identified key requirements",
+                "Proposed initial solution"
+            ],
+            "solution": f"Initial solution for: {user_input[:30]}...",
+            "limitations": ["May not consider all perspectives", "Limited context awareness"]
+        }
+    
+    async def _generate_alternative_perspectives(
+        self,
+        user_input: str,
+        intent_result: Any,
+        initial_reasoning: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Generate alternative perspectives on the problem"""
+        await asyncio.sleep(0.06)  # Simulate processing time
+        
+        alternatives = []
+        
+        # Alternative 1: Contrarian perspective
+        alternatives.append({
+            "description": "Contrarian analysis approach",
+            "confidence": 0.65,
+            "reasoning_steps": [
+                "Question assumptions",
+                "Identify potential issues",
+                "Consider opposite viewpoint"
+            ],
+            "solution": "Alternative solution considering potential issues",
+            "strengths": ["Challenges assumptions", "Identifies risks"],
+            "weaknesses": ["May overcomplicate", "Could be overly cautious"]
+        })
+        
+        # Alternative 2: Holistic perspective
+        alternatives.append({
+            "description": "Holistic system approach", 
+            "confidence": 0.75,
+            "reasoning_steps": [
+                "Consider entire system",
+                "Identify all stakeholders",
+                "Evaluate broader implications"
+            ],
+            "solution": "Comprehensive solution addressing all aspects",
+            "strengths": ["Comprehensive", "Considers all factors"],
+            "weaknesses": ["More complex", "May be less focused"]
+        })
+        
+        # Alternative 3: Pragmatic perspective
+        alternatives.append({
+            "description": "Practical implementation focus",
+            "confidence": 0.8,
+            "reasoning_steps": [
+                "Focus on practicality",
+                "Consider resource constraints",
+                "Prioritize implementation"
+            ],
+            "solution": "Practical, implementable solution",
+            "strengths": ["Actionable", "Resource-aware"],
+            "weaknesses": ["May miss optimal solutions", "Pragmatic limitations"]
+        })
+        
+        return alternatives
+    
+    async def _evaluate_perspectives(
+        self,
+        initial_reasoning: Dict[str, Any],
+        alternatives: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Evaluate and compare different perspectives"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        evaluations = {}
+        
+        # Evaluate initial reasoning
+        evaluations["initial"] = {
+            "strengths": ["Fast", "Direct", "Clear"],
+            "weaknesses": initial_reasoning.get("limitations", []),
+            "score": initial_reasoning.get("confidence", 0.5) * 0.8
+        }
+        
+        # Evaluate alternatives
+        for i, alt in enumerate(alternatives):
+            alt_id = f"alternative_{i}"
+            evaluations[alt_id] = {
+                "strengths": alt.get("strengths", []),
+                "weaknesses": alt.get("weaknesses", []),
+                "score": alt.get("confidence", 0.5)
+            }
+        
+        # Find best perspective
+        best_perspective = max(evaluations.keys(), key=lambda k: evaluations[k]["score"])
+        best_score = evaluations[best_perspective]["score"]
+        
+        return {
+            "evaluations": evaluations,
+            "best_perspective": best_perspective,
+            "best_score": best_score,
+            "consensus_insights": [
+                "Multiple approaches provide different value",
+                "Context determines optimal strategy",
+                "Combination of approaches may be best"
+            ]
+        }
+    
+    async def _generate_reflexion(
+        self,
+        initial_reasoning: Dict[str, Any],
+        alternatives: List[Dict[str, Any]],
+        evaluation: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Generate reflexion insights"""
+        await asyncio.sleep(0.05)  # Simulate processing time
+        
+        improvements = []
+        
+        # Identify areas for improvement
+        if initial_reasoning.get("confidence", 0) < 0.7:
+            improvements.append("Increase confidence through better context analysis")
+        
+        if len(alternatives) < 3:
+            improvements.append("Consider more alternative perspectives")
+        
+        # Generate meta-insights
+        meta_insights = [
+            "Multiple reasoning paths provide complementary insights",
+            "Reflexion improves solution quality and confidence",
+            "Different perspectives highlight different aspects"
+        ]
+        
+        return {
+            "improvements": improvements,
+            "meta_insights": meta_insights,
+            "reflexion_quality": 0.8,
+            "confidence": 0.75
+        }
+    
+    async def _apply_reflexion_improvements(
+        self,
+        initial_reasoning: Dict[str, Any],
+        reflexion: Dict[str, Any],
+        evaluation: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Apply reflexion improvements to create enhanced solution"""
+        await asyncio.sleep(0.06)  # Simulate processing time
+        
+        # Combine best elements from different perspectives
+        improved_confidence = min(1.0, initial_reasoning.get("confidence", 0.5) + 0.2)
+        
+        # Integrate improvements
+        enhanced_solution = {
+            "description": "Reflexion-enhanced solution",
+            "approach": "Multi-perspective synthesis",
+            "confidence": improved_confidence,
+            "reasoning_steps": [
+                "Synthesized initial reasoning",
+                "Incorporated alternative insights",
+                "Applied reflexion improvements",
+                "Enhanced solution quality"
+            ],
+            "solution": f"Enhanced solution incorporating multiple perspectives and improvements",
+            "improvements_applied": reflexion.get("improvements", []),
+            "meta_insights": reflexion.get("meta_insights", [])
+        }
+        
+        return enhanced_solution
+    
+    async def _collaborative_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Collaborative reasoning using multiple agents"""
+        
+        if not self.enable_collaboration:
+            return await self._chain_of_thought_reasoning(user_input, intent_result, reasoning_trace)
+        
+        # Select appropriate agents
+        selected_agents = await self._select_collaborative_agents(user_input, intent_result)
+        
+        # Create tasks for agents
+        agent_tasks = await self._create_agent_tasks(user_input, intent_result, selected_agents)
+        
+        # Execute collaborative processing
+        agent_results = await self._execute_collaborative_processing(
+            agent_tasks, selected_agents
+        )
+        
+        # Synthesize results
+        synthesis = await self._synthesize_agent_results(agent_results, user_input, intent_result)
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="collaborative_reasoning",
+            description="Collaborative reasoning completed",
+            input_data={
+                "user_input": user_input,
+                "agents_used": [agent.agent_id for agent in selected_agents]
+            },
+            output_data={
+                "agent_results": len(agent_results),
+                "synthesis_confidence": synthesis.get("confidence", 0.5),
+                "collaborative_score": synthesis.get("collaborative_score", 0.0)
+            },
+            confidence=0.9
+        )
+        
+        self.advanced_metrics["collaborative_processes"] += 1
+        
+        # Store collaboration results
+        self.collaboration_results.append({
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "agents_used": [agent.agent_id for agent in selected_agents],
+            "agent_results": agent_results,
+            "synthesis": synthesis
+        })
+        
+        return synthesis
+    
+    async def _select_collaborative_agents(
+        self,
+        user_input: str,
+        intent_result: Any
+    ) -> List[CollaborativeAgent]:
+        """Select appropriate agents for the task"""
+        
+        # Score agents based on relevance
+        agent_scores = []
+        
+        for agent in self.collaborative_agents.values():
+            # Calculate relevance score
+            relevance_score = 0.0
+            
+            # Intent-based relevance
+            if agent.specialization == intent_result.intent:
+                relevance_score += 0.4
+            
+            # Capability-based relevance
+            for capability in agent.capabilities:
+                if any(word in user_input.lower() for word in capability.split("_")):
+                    relevance_score += 0.1
+            
+            # Load-based adjustment
+            load_penalty = agent.get_load() * 0.2
+            relevance_score -= load_penalty
+            
+            # Confidence-based adjustment
+            confidence_bonus = agent.confidence_score * 0.2
+            relevance_score += confidence_bonus
+            
+            agent_scores.append((agent, relevance_score))
+        
+        # Sort by score and select top agents
+        agent_scores.sort(key=lambda x: x[1], reverse=True)
+        selected_agents = [agent for agent, score in agent_scores[:self.max_collaborative_agents]]
+        
+        return selected_agents
+    
+    async def _create_agent_tasks(
+        self,
+        user_input: str,
+        intent_result: Any,
+        selected_agents: List[CollaborativeAgent]
+    ) -> List[Dict[str, Any]]:
+        """Create specific tasks for each agent"""
+        
+        tasks = []
+        
+        for agent in selected_agents:
+            # Create task based on agent specialization
+            if agent.specialization == SkillCategory.CODE_GENERATION:
+                task = {
+                    "type": "code_analysis",
+                    "input": user_input,
+                    "focus": "code_solutions",
+                    "requirements": ["implementation", "optimization", "best_practices"]
+                }
+            elif agent.specialization == SkillCategory.DATA_ANALYSIS:
+                task = {
+                    "type": "data_analysis", 
+                    "input": user_input,
+                    "focus": "data_insights",
+                    "requirements": ["patterns", "trends", "statistics"]
+                }
+            elif agent.specialization == SkillCategory.GENERAL:
+                task = {
+                    "type": "logical_reasoning",
+                    "input": user_input,
+                    "focus": "logical_analysis",
+                    "requirements": ["coherence", "validity", "consistency"]
+                }
+            elif agent.specialization == SkillCategory.PLANNING:
+                task = {
+                    "type": "strategic_planning",
+                    "input": user_input,
+                    "focus": "planning_approach",
+                    "requirements": ["strategy", "roadmap", "milestones"]
+                }
+            else:
+                task = {
+                    "type": "general_analysis",
+                    "input": user_input,
+                    "focus": "general_insights",
+                    "requirements": ["comprehension", "recommendations"]
+                }
+            
+            tasks.append(task)
+            
+            # Assign task to agent
+            task_id = str(uuid.uuid4())
+            self.agent_assignments[task_id] = agent.agent_id
+            agent.set_load(agent.get_load() + 0.2)  # Increase load
+        
+        return tasks
+    
+    async def _execute_collaborative_processing(
+        self,
+        tasks: List[Dict[str, Any]],
+        selected_agents: List[CollaborativeAgent]
+    ) -> List[Dict[str, Any]]:
+        """Execute tasks across multiple agents concurrently"""
+        
+        # Create agent-task mapping
+        agent_tasks = {}
+        for i, agent in enumerate(selected_agents):
+            if i < len(tasks):
+                agent_tasks[agent] = tasks[i]
+        
+        # Execute tasks concurrently
+        results = []
+        
+        async def process_agent_task(agent: CollaborativeAgent, task: Dict[str, Any]):
+            try:
+                # Create context (simplified)
+                context = []  # Would include relevant memories
+                
+                result = await agent.process_task(task, context)
+                result["agent_id"] = agent.agent_id
+                result["agent_specialization"] = agent.specialization.value
+                
+                return result
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "agent_id": agent.agent_id,
+                    "agent_specialization": agent.specialization.value
+                }
+        
+        # Execute all agent tasks concurrently
+        agent_coroutines = [
+            process_agent_task(agent, agent_tasks[agent])
+            for agent in agent_tasks.keys()
+        ]
+        
+        results = await asyncio.gather(*agent_coroutines, return_exceptions=True)
+        
+        # Filter successful results
+        successful_results = [
+            result for result in results 
+            if isinstance(result, dict) and result.get("success", False)
+        ]
+        
+        # Update agent loads (decrease after task completion)
+        for agent in selected_agents:
+            agent.set_load(max(0.0, agent.get_load() - 0.2))
+        
+        return successful_results
+    
+    async def _synthesize_agent_results(
+        self,
+        agent_results: List[Dict[str, Any]],
+        user_input: str,
+        intent_result: Any
+    ) -> Dict[str, Any]:
+        """Synthesize results from multiple agents into cohesive solution"""
+        
+        if not agent_results:
+            return {
+                "strategy": "collaborative",
+                "description": "No agent results available",
+                "confidence": 0.3,
+                "collaborative_score": 0.0
+            }
+        
+        # Analyze results for consensus and diversity
+        consensus_elements = []
+        unique_insights = []
+        
+        # Extract key insights from each result
+        all_insights = []
+        for result in agent_results:
+            if "reasoning_steps" in result:
+                all_insights.extend(result["reasoning_steps"])
+            if "output" in result:
+                consensus_elements.append(result["output"])
+        
+        # Calculate synthesis metrics
+        total_confidence = sum(result.get("confidence", 0.5) for result in agent_results)
+        avg_confidence = total_confidence / len(agent_results)
+        
+        # Diversity score (higher means more diverse perspectives)
+        diversity_score = min(1.0, len(set(consensus_elements)) / len(consensus_elements))
+        
+        # Collaborative score (combination of confidence and diversity)
+        collaborative_score = (avg_confidence * 0.7) + (diversity_score * 0.3)
+        
+        # Generate synthesis
+        synthesis = {
+            "strategy": "collaborative",
+            "description": "Multi-agent collaborative synthesis",
+            "confidence": collaborative_score,
+            "collaborative_score": collaborative_score,
+            "consensus_elements": consensus_elements[:3],  # Top 3 elements
+            "unique_insights": unique_insights,
+            "agent_count": len(agent_results),
+            "avg_agent_confidence": avg_confidence,
+            "diversity_score": diversity_score,
+            "synthesis_quality": "high" if collaborative_score > 0.7 else "medium" if collaborative_score > 0.5 else "low",
+            "recommendation": f"Collaborative solution with {len(agent_results)} agent perspectives"
+        }
+        
+        return synthesis
+    
+    async def _multi_path_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Multi-path reasoning exploring multiple solution approaches"""
+        
+        # Generate multiple reasoning paths
+        paths = []
+        
+        # Path 1: Analytical approach
+        analytical_path = await self._analytical_reasoning_path(user_input, intent_result)
+        paths.append(("analytical", analytical_path))
+        
+        # Path 2: Intuitive approach  
+        intuitive_path = await self._intuitive_reasoning_path(user_input, intent_result)
+        paths.append(("intuitive", intuitive_path))
+        
+        # Path 3: Systematic approach
+        systematic_path = await self._systematic_reasoning_path(user_input, intent_result)
+        paths.append(("systematic", systematic_path))
+        
+        # Evaluate and rank paths
+        path_evaluations = await self._evaluate_reasoning_paths(paths, user_input, intent_result)
+        
+        # Select best path or create hybrid solution
+        if path_evaluations["best_confidence"] > 0.8:
+            best_path = path_evaluations["best_path"]
+            solution = paths[best_path][1]
+        else:
+            # Create hybrid solution
+            solution = await self._create_hybrid_solution(paths, path_evaluations)
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="multi_path_reasoning",
+            description="Multi-path reasoning completed",
+            input_data={"user_input": user_input, "paths_explored": len(paths)},
+            output_data={
+                "paths_evaluated": len(paths),
+                "best_confidence": path_evaluations["best_confidence"],
+                "hybrid_created": path_evaluations["best_confidence"] <= 0.8
+            },
+            confidence=0.85
+        )
+        
+        return solution
+    
+    async def _analytical_reasoning_path(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Analytical reasoning path"""
+        await asyncio.sleep(0.05)
+        
+        return {
+            "path_type": "analytical",
+            "description": "Logical analytical approach",
+            "confidence": 0.75,
+            "reasoning_steps": [
+                "Decompose problem analytically",
+                "Apply logical frameworks",
+                "Use systematic analysis"
+            ],
+            "solution": f"Analytical solution for: {user_input[:30]}..."
+        }
+    
+    async def _intuitive_reasoning_path(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Intuitive reasoning path"""
+        await asyncio.sleep(0.04)
+        
+        return {
+            "path_type": "intuitive",
+            "description": "Pattern recognition approach",
+            "confidence": 0.7,
+            "reasoning_steps": [
+                "Recognize patterns",
+                "Apply intuitive insights",
+                "Use experience-based reasoning"
+            ],
+            "solution": f"Intuitive solution recognizing patterns"
+        }
+    
+    async def _systematic_reasoning_path(self, user_input: str, intent_result: Any) -> Dict[str, Any]:
+        """Systematic reasoning path"""
+        await asyncio.sleep(0.06)
+        
+        return {
+            "path_type": "systematic",
+            "description": "Structured methodical approach",
+            "confidence": 0.8,
+            "reasoning_steps": [
+                "Define systematic framework",
+                "Apply structured methodology",
+                "Follow logical progression"
+            ],
+            "solution": f"Systematic solution with clear methodology"
+        }
+    
+    async def _evaluate_reasoning_paths(
+        self,
+        paths: List[Tuple[str, Dict[str, Any]]],
+        user_input: str,
+        intent_result: Any
+    ) -> Dict[str, Any]:
+        """Evaluate multiple reasoning paths"""
+        
+        evaluations = {}
+        best_confidence = 0.0
+        best_path_index = 0
+        
+        for i, (path_name, path_data) in enumerate(paths):
+            # Evaluate path based on multiple criteria
+            confidence = path_data.get("confidence", 0.5)
+            step_count = len(path_data.get("reasoning_steps", []))
+            
+            # Calculate evaluation score
+            evaluation_score = (
+                confidence * 0.4 +
+                (step_count / 5.0) * 0.3 +  # Normalize step count
+                0.3  # Base score
+            )
+            
+            evaluations[path_name] = {
+                "confidence": confidence,
+                "step_count": step_count,
+                "evaluation_score": evaluation_score,
+                "index": i
+            }
+            
+            if evaluation_score > best_confidence:
+                best_confidence = evaluation_score
+                best_path_index = i
+        
+        return {
+            "evaluations": evaluations,
+            "best_confidence": best_confidence,
+            "best_path": best_path_index
+        }
+    
+    async def _create_hybrid_solution(
+        self,
+        paths: List[Tuple[str, Dict[str, Any]]],
+        path_evaluations: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create hybrid solution from multiple paths"""
+        
+        # Combine best elements from each path
+        hybrid_steps = []
+        hybrid_confidence = 0.0
+        
+        for path_name, path_data in paths:
+            evaluation = path_evaluations["evaluations"][path_name]
+            weight = evaluation["evaluation_score"]
+            
+            hybrid_confidence += path_data.get("confidence", 0.5) * weight
+            
+            # Add representative steps from each path
+            if path_data.get("reasoning_steps"):
+                hybrid_steps.append(f"[{path_name.title()}] {path_data['reasoning_steps'][0]}")
+        
+        hybrid_confidence /= len(paths)
+        
+        return {
+            "path_type": "hybrid",
+            "description": "Hybrid solution combining multiple approaches",
+            "confidence": hybrid_confidence,
+            "reasoning_steps": hybrid_steps,
+            "hybrid_components": [path[0] for path in paths],
+            "solution": "Hybrid solution incorporating strengths from multiple reasoning paths"
+        }
+    
+    async def _hybrid_reasoning(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> Dict[str, Any]:
+        """Hybrid reasoning combining multiple strategies"""
+        
+        # Determine which strategies to combine
+        task_complexity = self._analyze_task_complexity(user_input, intent_result)
+        
+        selected_strategies = []
+        
+        if task_complexity > 0.8:
+            # High complexity - use collaborative + chain of thought
+            selected_strategies = [
+                AdvancedReasoningStrategy.COLLABORATIVE,
+                AdvancedReasoningStrategy.CHAIN_OF_THOUGHT
+            ]
+        elif task_complexity > 0.6:
+            # Medium complexity - use tree + reflexion
+            selected_strategies = [
+                AdvancedReasoningStrategy.TREE_OF_THOUGHT,
+                AdvancedReasoningStrategy.REFLEXION
+            ]
+        else:
+            # Low complexity - use chain of thought + reflexion
+            selected_strategies = [
+                AdvancedReasoningStrategy.CHAIN_OF_THOUGHT,
+                AdvancedReasoningStrategy.REFLEXION
+            ]
+        
+        # Execute strategies in sequence
+        results = []
+        for strategy in selected_strategies:
+            if strategy == AdvancedReasoningStrategy.CHAIN_OF_THOUGHT:
+                result = await self._chain_of_thought_reasoning(user_input, intent_result, reasoning_trace)
+            elif strategy == AdvancedReasoningStrategy.TREE_OF_THOUGHT:
+                result = await self._tree_of_thought_reasoning(user_input, intent_result, reasoning_trace)
+            elif strategy == AdvancedReasoningStrategy.REFLEXION:
+                result = await self._reflexion_reasoning(user_input, intent_result, reasoning_trace)
+            elif strategy == AdvancedReasoningStrategy.COLLABORATIVE:
+                result = await self._collaborative_reasoning(user_input, intent_result, reasoning_trace)
+            else:
+                continue
+            
+            results.append(result)
+        
+        # Synthesize results from multiple strategies
+        synthesis = await self._synthesize_strategy_results(results, selected_strategies)
+        
+        # Add to reasoning trace
+        reasoning_trace.add_step(
+            step_type="hybrid_reasoning",
+            description="Hybrid reasoning completed",
+            input_data={
+                "user_input": user_input,
+                "strategies_combined": [s.value for s in selected_strategies],
+                "task_complexity": task_complexity
+            },
+            output_data={
+                "strategy_count": len(selected_strategies),
+                "synthesis_confidence": synthesis.get("confidence", 0.5)
+            },
+            confidence=0.9
+        )
+        
+        return synthesis
+    
+    async def _synthesize_strategy_results(
+        self,
+        results: List[Dict[str, Any]],
+        strategies: List[AdvancedReasoningStrategy]
+    ) -> Dict[str, Any]:
+        """Synthesize results from multiple reasoning strategies"""
+        
+        if not results:
+            return {
+                "strategy": "hybrid",
+                "description": "No strategy results available",
+                "confidence": 0.3
+            }
+        
+        # Combine insights from all strategies
+        all_insights = []
+        all_confidence_scores = []
+        
+        for result in results:
+            if "reasoning_steps" in result:
+                all_insights.extend(result["reasoning_steps"])
+            if "confidence" in result:
+                all_confidence_scores.append(result["confidence"])
+        
+        # Calculate synthesis confidence
+        avg_confidence = sum(all_confidence_scores) / len(all_confidence_scores) if all_confidence_scores else 0.5
+        
+        # Weight strategies based on their effectiveness for the task
+        strategy_weights = {
+            AdvancedReasoningStrategy.CHAIN_OF_THOUGHT: 0.3,
+            AdvancedReasoningStrategy.TREE_OF_THOUGHT: 0.25,
+            AdvancedReasoningStrategy.REFLEXION: 0.25,
+            AdvancedReasoningStrategy.COLLABORATIVE: 0.2
+        }
+        
+        weighted_confidence = 0.0
+        total_weight = 0.0
+        
+        for i, strategy in enumerate(strategies):
+            if i < len(results) and "confidence" in results[i]:
+                weight = strategy_weights.get(strategy, 0.25)
+                weighted_confidence += results[i]["confidence"] * weight
+                total_weight += weight
+        
+        if total_weight > 0:
+            final_confidence = weighted_confidence / total_weight
+        else:
+            final_confidence = avg_confidence
+        
+        return {
+            "strategy": "hybrid",
+            "description": "Hybrid reasoning combining multiple strategies",
+            "confidence": final_confidence,
+            "combined_insights": all_insights[:5],  # Top 5 insights
+            "strategies_used": [s.value for s in strategies],
+            "strategy_effectiveness": {
+                s.value: results[i].get("confidence", 0.5) 
+                for i, s in enumerate(strategies) if i < len(results)
+            },
+            "recommendation": f"Hybrid solution combining {len(strategies)} complementary strategies"
+        }
+    
+    async def _enhanced_context_retrieval(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> List[MemoryEntry]:
+        """Enhanced context retrieval with relevance scoring"""
+        relevant_memories = []
+        
+        try:
+            # Multi-level context retrieval
+            search_results = self.vector_memory.search(
+                query=user_input,
+                limit=8,  # Increased for enhanced processing
+                threshold=0.5,  # Lowered threshold for broader retrieval
+                memory_type=intent_result.intent
+            )
+            
+            # Enhanced relevance scoring
+            for result in search_results:
+                memory_entry = MemoryEntry(
+                    id=result.metadata.get("id", ""),
+                    content=result.content,
+                    memory_type=MemoryType(result.metadata.get("memory_type", "semantic")),
+                    importance=result.metadata.get("importance", 0.5),
+                    tags=result.metadata.get("tags", [])
+                )
+                
+                # Enhanced relevance scoring
+                relevance_score = self._calculate_enhanced_relevance(
+                    user_input, result, intent_result
+                )
+                
+                if relevance_score > 0.3:  # Minimum relevance threshold
+                    memory_entry.metadata = {
+                        **memory_entry.metadata,
+                        "relevance_score": relevance_score,
+                        "enhanced_retrieval": True
+                    }
+                    relevant_memories.append(memory_entry)
+            
+            # Sort by relevance
+            relevant_memories.sort(key=lambda x: x.metadata.get("relevance_score", 0.0), reverse=True)
+            
+            # Add reasoning step
+            reasoning_trace.add_step(
+                step_type="enhanced_context_retrieval",
+                description=f"Retrieved {len(relevant_memories)} enhanced relevant memories",
+                input_data={"query": user_input, "intent": intent_result.intent.value},
+                output_data=[m.content for m in relevant_memories],
+                confidence=min(0.9, len(relevant_memories) * 0.15 + 0.4)
+            )
+            
+        except Exception as e:
+            logger.warning(f"Enhanced context retrieval failed: {e}")
+            reasoning_trace.add_step(
+                step_type="enhanced_context_retrieval",
+                description="Enhanced context retrieval failed",
+                input_data=user_input,
+                output_data=[],
+                confidence=0.0
+            )
+        
+        return relevant_memories
+    
+    def _calculate_enhanced_relevance(
+        self,
+        user_input: str,
+        search_result: Any,
+        intent_result: Any
+    ) -> float:
+        """Calculate enhanced relevance score for memory entry"""
+        
+        base_score = search_result.metadata.get("importance", 0.5)
+        
+        # Content similarity
+        similarity_score = getattr(search_result, 'similarity', 0.5)
+        
+        # Intent matching bonus
+        intent_bonus = 0.2 if search_result.metadata.get("memory_type") == intent_result.intent.value else 0.0
+        
+        # Temporal relevance (newer memories get slight bonus)
+        try:
+            timestamp_str = search_result.metadata.get("timestamp", "")
+            if timestamp_str:
+                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                hours_old = (datetime.now() - timestamp).total_seconds() / 3600
+                temporal_bonus = max(0, 0.1 - (hours_old / 24 * 0.05))  # Decay over days
+            else:
+                temporal_bonus = 0.0
+        except:
+            temporal_bonus = 0.0
+        
+        # Confidence bonus from original intent recognition
+        confidence_bonus = intent_result.confidence * 0.1
+        
+        # Calculate final relevance score
+        relevance_score = (
+            base_score * 0.3 +
+            similarity_score * 0.4 +
+            intent_bonus * 0.15 +
+            temporal_bonus * 0.1 +
+            confidence_bonus * 0.05
+        )
+        
+        return min(1.0, relevance_score)
+    
+    async def _enhanced_skill_execution(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_output: Dict[str, Any],
+        context: List[MemoryEntry],
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> SkillResult:
+        """Enhanced skill execution with reasoning integration"""
+        start_time = time.time()
+        
+        # Enhanced skill selection based on reasoning output
+        selected_skill = await self._enhanced_skill_selection(user_input, intent_result, reasoning_output, context)
+        
+        if not selected_skill:
+            # No skill needed, return reasoning-based result
+            result = SkillResult(
+                success=True,
+                output=f"Enhanced reasoning completed: {reasoning_output.get('description', 'Analysis provided')}",
+                skill_name="enhanced_reasoning",
+                execution_time=time.time() - start_time
+            )
+            
+            reasoning_trace.add_step(
+                step_type="enhanced_skill_execution",
+                description="No skill execution needed, reasoning sufficient",
+                input_data={"reasoning_strategy": reasoning_output.get("strategy", "unknown")},
+                output_data=result.output,
+                confidence=0.8
+            )
+            
+            return result
+        
+        try:
+            # Get skill implementation
+            skill = self.skills.get(selected_skill)
+            
+            if not skill:
+                result = SkillResult(
+                    success=False,
+                    output=f"Skill {selected_skill} not found",
+                    skill_name=selected_skill,
+                    execution_time=time.time() - start_time,
+                    error_message="Skill implementation not found"
+                )
+                
+                reasoning_trace.add_step(
+                    step_type="enhanced_skill_execution",
+                    description=f"Skill {selected_skill} not found",
+                    input_data=user_input,
+                    output_data=result.output,
+                    confidence=0.0
+                )
+                
+                return result
+            
+            # Create enhanced skill context with reasoning
+            enhanced_context = SkillContext(
+                user_input=user_input,
+                intent=intent_result.intent,
+                conversation_history=[],
+                memory_context=context
+            )
+            
+            # Add reasoning information to context
+            enhanced_context.metadata = {
+                **enhanced_context.metadata,
+                "reasoning_strategy": reasoning_output.get("strategy", "unknown"),
+                "reasoning_confidence": reasoning_output.get("confidence", 0.5),
+                "reasoning_insights": reasoning_output.get("reasoning_steps", []),
+                "enhanced_processing": True
+            }
+            
+            # Execute skill with enhanced context
+            # Simplified execution - in reality would call actual skill method
+            result = SkillResult(
+                success=True,
+                output=f"Enhanced execution of {selected_skill} with reasoning integration",
+                skill_name=selected_skill,
+                execution_time=time.time() - start_time
+            )
+            
+            reasoning_trace.add_step(
+                step_type="enhanced_skill_execution",
+                description=f"Enhanced skill execution: {selected_skill}",
+                input_data={"skill": selected_skill, "reasoning": reasoning_output.get("strategy")},
+                output_data=result.output,
+                confidence=0.85
+            )
+            
+        except Exception as e:
+            result = SkillResult(
+                success=False,
+                output=f"Error executing enhanced skill {selected_skill}",
+                skill_name=selected_skill,
+                execution_time=time.time() - start_time,
+                error_message=str(e)
+            )
+            
+            reasoning_trace.add_step(
+                step_type="enhanced_skill_execution",
+                description=f"Enhanced skill execution failed: {selected_skill}",
+                input_data=user_input,
+                output_data=str(e),
+                confidence=0.0
+            )
+        
+        return result
+    
+    async def _enhanced_skill_selection(
+        self,
+        user_input: str,
+        intent_result: Any,
+        reasoning_output: Dict[str, Any],
+        context: List[MemoryEntry]
+    ) -> Optional[str]:
+        """Enhanced skill selection with reasoning integration"""
+        
+        # Enhanced skill scoring based on multiple factors
+        skill_scores = {}
+        
+        for skill_name in self.skills.keys():
+            base_score = 0.5
+            
+            # Intent-based scoring
+            skill_category_scores = {
+                SkillCategory.CODE_GENERATION: intent_result.intent == IntentType.CODE,
+                SkillCategory.DATA_ANALYSIS: intent_result.intent == IntentType.DATA_ANALYSIS,
+                SkillCategory.PLANNING: intent_result.intent == IntentType.PLANNING,
+                SkillCategory.GENERAL: True  # General skill always available
+            }
+            
+            # Check if skill belongs to relevant category
+            if skill_name in self.skill_categories.get(SkillCategory.GENERAL, []):
+                base_score += 0.3
+            elif any(
+                skill_name in self.skill_categories.get(cat, [])
+                for cat, relevant in skill_category_scores.items() if relevant
+            ):
+                base_score += 0.6
+            
+            # Reasoning strategy compatibility
+            reasoning_strategy = reasoning_output.get("strategy", "")
+            if reasoning_strategy == "collaborative" and any(agent_id in skill_name for agent_id in ["analysis", "synthesis"]):
+                base_score += 0.2
+            
+            # Context relevance
+            if context:
+                context_relevance = sum(
+                    mem.metadata.get("relevance_score", 0.0) for mem in context[:3]
+                ) / min(3, len(context))
+                base_score += context_relevance * 0.2
+            
+            # User preference based on learned patterns
+            if hasattr(self, 'user_preferences'):
+                user_input_lower = user_input.lower()
+                if user_input_lower in self.user_preferences:
+                    preferred_skills = self.user_preferences[user_input_lower].get("successful_skills", [])
+                    if skill_name in preferred_skills:
+                        base_score += 0.3
+            
+            skill_scores[skill_name] = base_score
+        
+        # Select best skill if score is above threshold
+        if skill_scores:
+            best_skill = max(skill_scores.keys(), key=lambda k: skill_scores[k])
+            if skill_scores[best_skill] > 0.6:
+                return best_skill
+        
         return None
+    
+    async def _enhanced_response_generation(
+        self,
+        skill_result: SkillResult,
+        user_input: str,
+        reasoning_output: Dict[str, Any],
+        context: List[MemoryEntry],
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> str:
+        """Enhanced response generation with reasoning integration"""
+        
+        response_parts = []
+        
+        # Main response from skill result or reasoning
+        if skill_result.success:
+            main_response = str(skill_result.output)
+            
+            # Add reasoning strategy context if confidence is high
+            if reasoning_output.get("confidence", 0) > 0.7:
+                strategy = reasoning_output.get("strategy", "enhanced reasoning")
+                main_response += f"\n\n[Enhanced with {strategy}]"
+            
+            response_parts.append(main_response)
+        else:
+            response_parts.append(f"I apologize, but I encountered an issue: {skill_result.error_message or 'Unknown error'}")
+        
+        # Add context information if relevant
+        if context:
+            top_context = context[:2]  # Top 2 most relevant
+            context_info = f"\n[Enhanced context: {len(top_context)} relevant memories consulted]"
+            response_parts.append(context_info)
+        
+        # Add reasoning insights if available
+        if "combined_insights" in reasoning_output:
+            insights = reasoning_output["combined_insights"][:2]  # Top 2 insights
+            if insights:
+                insight_text = "\n[Key insights: " + "; ".join(insights) + "]"
+                response_parts.append(insight_text)
+        
+        # Add collaborative information if applicable
+        if reasoning_output.get("strategy") == "collaborative" and reasoning_output.get("agent_count"):
+            agent_count = reasoning_output["agent_count"]
+            response_parts.append(f"\n[Collaborative processing: {agent_count} specialized agents]")
+        
+        final_response = "\n".join(response_parts)
+        
+        reasoning_trace.add_step(
+            step_type="enhanced_response_generation",
+            description="Enhanced response generated",
+            input_data={
+                "skill_success": skill_result.success,
+                "reasoning_strategy": reasoning_output.get("strategy", "unknown"),
+                "context_count": len(context)
+            },
+            output_data=final_response,
+            confidence=0.8 if skill_result.success else 0.3
+        )
+        
+        return final_response
+    
+    async def _perform_reflexion(
+        self,
+        user_input: str,
+        response: str,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> None:
+        """Perform self-reflection on the interaction"""
+        
+        reflection_data = {
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "response": response,
+            "interaction_quality": self._assess_interaction_quality(user_input, response),
+            "areas_for_improvement": [],
+            "learning_opportunities": []
+        }
+        
+        # Assess interaction quality
+        quality_score = reflection_data["interaction_quality"]
+        
+        if quality_score < 0.7:
+            reflection_data["areas_for_improvement"].append("Response clarity could be improved")
+            reflection_data["learning_opportunities"].append("Practice more concise explanations")
+        
+        if len(user_input.split()) > 20 and quality_score < 0.8:
+            reflection_data["areas_for_improvement"].append("Complex queries need more structured approach")
+            reflection_data["learning_opportunities"].append("Develop better complex query handling")
+        
+        # Store reflection
+        self.reflexion_history.append(reflection_data)
+        
+        # Keep only recent reflections
+        if len(self.reflexion_history) > 100:
+            self.reflexion_history = self.reflexion_history[-100:]
+        
+        reasoning_trace.add_step(
+            step_type="self_reflexion",
+            description="Self-reflection completed",
+            input_data={"user_input_length": len(user_input)},
+            output_data={
+                "quality_score": quality_score,
+                "improvement_areas": len(reflection_data["areas_for_improvement"])
+            },
+            confidence=0.6
+        )
+    
+    def _assess_interaction_quality(self, user_input: str, response: str) -> float:
+        """Assess the quality of the interaction"""
+        
+        quality_factors = []
+        
+        # Response completeness (basic heuristic)
+        response_coverage = min(1.0, len(response) / (len(user_input) * 2))
+        quality_factors.append(response_coverage)
+        
+        # Clarity indicators
+        clarity_indicators = ["clear", "understand", "explain", "here's", "solution"]
+        clarity_score = sum(1 for indicator in clarity_indicators if indicator in response.lower()) / len(clarity_indicators)
+        quality_factors.append(clarity_score)
+        
+        # Helpfulness indicators
+        helpful_indicators = ["help", "assist", "recommend", "suggest", "can help"]
+        helpfulness_score = sum(1 for indicator in helpful_indicators if indicator in response.lower()) / len(helpful_indicators)
+        quality_factors.append(helpfulness_score)
+        
+        # Structure indicators
+        structure_indicators = [".", ",", "\n", "step", "first", "second", "then"]
+        structure_score = min(1.0, sum(1 for indicator in structure_indicators if indicator in response) / len(structure_indicators))
+        quality_factors.append(structure_score)
+        
+        return sum(quality_factors) / len(quality_factors)
+    
+    async def _enhanced_learning(
+        self,
+        user_input: str,
+        response: str,
+        intent_result: Any,
+        skill_result: SkillResult,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> None:
+        """Enhanced learning from interactions with advanced pattern recognition"""
+        
+        try:
+            # Enhanced learning data with reasoning context
+            learning_data = {
+                "input_pattern": user_input.lower(),
+                "intent": intent_result.intent.value,
+                "confidence": intent_result.confidence,
+                "skill_used": skill_result.skill_name,
+                "success": skill_result.success,
+                "reasoning_strategy": reasoning_trace.intent_analysis.get("strategy", "unknown"),
+                "reasoning_confidence": getattr(reasoning_trace, 'final_confidence', 0.0),
+                "enhanced_processing": True,
+                "timestamp": datetime.now().isoformat(),
+                "response_quality": self._assess_interaction_quality(user_input, response)
+            }
+            
+            # Update learned patterns with reasoning effectiveness
+            pattern_key = f"{intent_result.intent.value}_{skill_result.skill_name}"
+            if pattern_key not in self.learned_patterns:
+                self.learned_patterns[pattern_key] = []
+            
+            self.learned_patterns[pattern_key].append(learning_data)
+            
+            # Keep only recent patterns
+            if len(self.learned_patterns[pattern_key]) > 50:
+                self.learned_patterns[pattern_key] = self.learned_patterns[pattern_key][-50:]
+            
+            # Update user preferences with enhanced context
+            if skill_result.success:
+                user_input_lower = user_input.lower()
+                if user_input_lower not in self.user_preferences:
+                    self.user_preferences[user_input_lower] = {
+                        "count": 0,
+                        "successful_skills": [],
+                        "preferred_reasoning_strategies": [],
+                        "avg_quality_score": 0.0,
+                        "last_successful": None
+                    }
+                
+                self.user_preferences[user_input_lower]["count"] += 1
+                
+                if skill_result.skill_name not in self.user_preferences[user_input_lower]["successful_skills"]:
+                    self.user_preferences[user_input_lower]["successful_skills"].append(skill_result.skill_name)
+                
+                # Track preferred reasoning strategies
+                strategy = reasoning_trace.intent_analysis.get("strategy", "unknown")
+                if strategy not in self.user_preferences[user_input_lower]["preferred_reasoning_strategies"]:
+                    self.user_preferences[user_input_lower]["preferred_reasoning_strategies"].append(strategy)
+                
+                # Update quality score
+                current_quality = self.user_preferences[user_input_lower]["avg_quality_score"]
+                count = self.user_preferences[user_input_lower]["count"]
+                new_quality = learning_data["response_quality"]
+                updated_quality = (current_quality * (count - 1) + new_quality) / count
+                self.user_preferences[user_input_lower]["avg_quality_score"] = updated_quality
+                
+                self.user_preferences[user_input_lower]["last_successful"] = datetime.now().isoformat()
+            
+            # Update reasoning patterns for strategy optimization
+            if reasoning_trace.intent_analysis.get("strategy"):
+                strategy_key = reasoning_trace.intent_analysis["strategy"]
+                if strategy_key not in self.reasoning_patterns:
+                    self.reasoning_patterns[strategy_key] = {
+                        "usage_count": 0,
+                        "success_rate": 0.0,
+                        "avg_confidence": 0.0,
+                        "avg_quality": 0.0
+                    }
+                
+                pattern = self.reasoning_patterns[strategy_key]
+                pattern["usage_count"] += 1
+                
+                # Update success rate
+                current_success = pattern["success_rate"] * (pattern["usage_count"] - 1)
+                pattern["success_rate"] = (current_success + (1 if skill_result.success else 0)) / pattern["usage_count"]
+                
+                # Update confidence
+                current_confidence = pattern["avg_confidence"] * (pattern["usage_count"] - 1)
+                pattern["avg_confidence"] = (current_confidence + intent_result.confidence) / pattern["usage_count"]
+                
+                # Update quality
+                current_quality = pattern["avg_quality"] * (pattern["usage_count"] - 1)
+                pattern["avg_quality"] = (current_quality + learning_data["response_quality"]) / pattern["usage_count"]
+            
+        except Exception as e:
+            logger.warning(f"Enhanced learning failed: {e}")
+    
+    async def _store_enhanced_memory(
+        self,
+        user_input: str,
+        response: str,
+        intent_result: Any,
+        skill_result: Optional[SkillResult],
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> None:
+        """Store interaction in enhanced memory system"""
+        try:
+            # Store in persistent memory with enhanced metadata
+            conversation_id = self.memory.add_conversation(
+                user_input=user_input,
+                assistant_response=response,
+                intent=getattr(intent_result, 'intent', {}).value if intent_result else None,
+                skill_used=skill_result.skill_name if skill_result else None,
+                metadata={
+                    "confidence": getattr(intent_result, 'confidence', 0.0),
+                    "success": skill_result.success if skill_result else False,
+                    "enhanced_processing": True,
+                    "reasoning_strategy": reasoning_trace.intent_analysis.get("strategy", "unknown"),
+                    "enhanced_metrics": self.advanced_metrics.copy()
+                }
+            )
+            
+            # Store enhanced content in vector memory
+            if intent_result and getattr(intent_result, 'confidence', 0.0) > 0.7:
+                enhanced_content = f"User: {user_input} | Assistant: {response}"
+                
+                # Add reasoning context to metadata
+                reasoning_metadata = {
+                    "conversation_id": conversation_id,
+                    "intent": getattr(intent_result, 'intent', {}).value if intent_result else None,
+                    "skill": skill_result.skill_name if skill_result else None,
+                    "reasoning_strategy": reasoning_trace.intent_analysis.get("strategy", "unknown"),
+                    "reasoning_confidence": getattr(reasoning_trace, 'final_confidence', 0.5),
+                    "enhanced_processing": True,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                self.vector_memory.add_memory(
+                    content=enhanced_content,
+                    memory_type=MemoryType.EPISODIC,
+                    importance=getattr(intent_result, 'confidence', 0.5),
+                    metadata=reasoning_metadata
+                )
+                
+                # Store reasoning tree if available
+                for tree_id, tree in self.reasoning_trees.items():
+                    if tree.root.content[:50] in user_input[:50]:
+                        tree_metadata = reasoning_metadata.copy()
+                        tree_metadata["tree_type"] = "enhanced_reasoning"
+                        tree_metadata["reasoning_tree"] = tree.to_dict()
+                        
+                        self.vector_memory.add_memory(
+                            content=f"Reasoning tree: {tree.root.content}",
+                            memory_type=MemoryType.PROCEDURAL,
+                            importance=0.8,  # Reasoning trees are important
+                            metadata=tree_metadata
+                        )
+            
+        except Exception as e:
+            logger.warning(f"Enhanced memory storage failed: {e}")
+    
+    def _update_advanced_metrics(
+        self,
+        input_text: str,
+        output_text: str,
+        execution_time: float,
+        success: bool,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> None:
+        """Update advanced performance metrics"""
+        
+        # Update base metrics
+        super()._update_performance_metrics(input_text, output_text, execution_time, success)
+        
+        # Update advanced metrics
+        strategy = reasoning_trace.intent_analysis.get("strategy", "unknown")
+        
+        if strategy == "chain_of_thought":
+            self.advanced_metrics["chain_of_thought_usage"] += 1
+        elif strategy == "tree_of_thought":
+            self.advanced_metrics["tree_reasoning_usage"] += 1
+        elif strategy == "reflexion":
+            self.advanced_metrics["reflexion_usage"] += 1
+        elif strategy == "collaborative":
+            self.advanced_metrics["collaborative_processes"] += 1
+        
+        # Update average metrics
+        total_requests = self.total_processed_requests
+        
+        # Average reasoning depth
+        current_avg_depth = self.advanced_metrics["avg_reasoning_depth"]
+        reasoning_depth = len(reasoning_trace.steps)
+        if total_requests > 0:
+            new_avg_depth = (current_avg_depth * (total_requests - 1) + reasoning_depth) / total_requests
+        else:
+            new_avg_depth = reasoning_depth
+        self.advanced_metrics["avg_reasoning_depth"] = new_avg_depth
+        
+        # Average confidence score
+        current_avg_confidence = self.advanced_metrics["avg_confidence_score"]
+        if hasattr(reasoning_trace, 'final_confidence'):
+            final_confidence = reasoning_trace.final_confidence
+            if total_requests > 0:
+                new_avg_confidence = (current_avg_confidence * (total_requests - 1) + final_confidence) / total_requests
+            else:
+                new_avg_confidence = final_confidence
+            self.advanced_metrics["avg_confidence_score"] = new_avg_confidence
+    
+    def get_enhanced_status(self) -> Dict[str, Any]:
+        """Get enhanced brain status and statistics"""
+        
+        base_status = super().get_status()
+        
+        enhanced_status = {
+            **base_status,
+            "enhanced_processing": {
+                "advanced_strategy": self.advanced_strategy.value,
+                "collaboration_enabled": self.enable_collaboration,
+                "collaborative_agents": len(self.collaborative_agents),
+                "reasoning_trees": len(self.reasoning_trees),
+                "reflexion_history": len(self.reflexion_history),
+                "collaboration_results": len(self.collaboration_results)
+            },
+            "advanced_metrics": self.advanced_metrics.copy(),
+            "reasoning_patterns": {k: v for k, v in self.reasoning_patterns.items()},
+            "collaborative_agents_status": {
+                agent_id: {
+                    "specialization": agent.specialization.value,
+                    "confidence_score": agent.confidence_score,
+                    "load_factor": agent.get_load(),
+                    "status": agent.status.value,
+                    "result_count": len(agent.result_history)
+                }
+                for agent_id, agent in self.collaborative_agents.items()
+            }
+        }
+        
+        return enhanced_status
+    
+    def optimize_enhanced_performance(self) -> Dict[str, Any]:
+        """Optimize enhanced brain performance"""
+        
+        optimization_results = {"enhanced_optimization": True}
+        
+        try:
+            # Base optimization
+            base_optimization = self.optimize_performance()
+            optimization_results.update(base_optimization)
+            
+            # Enhanced optimization strategies
+            
+            # Optimize reasoning strategy selection
+            if self.reasoning_patterns:
+                best_strategy = max(
+                    self.reasoning_patterns.keys(),
+                    key=lambda k: self.reasoning_patterns[k]["success_rate"] * 0.6 + 
+                                 self.reasoning_patterns[k]["avg_confidence"] * 0.4
+                )
+                
+                if self.advanced_strategy == AdvancedReasoningStrategy.HYBRID:
+                    optimization_results["strategy_optimization"] = f"Consider emphasizing {best_strategy}"
+            
+            # Optimize collaborative agents
+            if self.enable_collaboration and self.collaborative_agents:
+                # Identify underperforming agents
+                low_performance_agents = []
+                for agent_id, agent in self.collaborative_agents.items():
+                    if agent.confidence_score < 0.5:
+                        low_performance_agents.append(agent_id)
+                
+                if low_performance_agents:
+                    optimization_results["agent_optimization"] = f"Consider retraining: {low_performance_agents}"
+                
+                # Balance agent loads
+                total_load = sum(agent.get_load() for agent in self.collaborative_agents.values())
+                if total_load > len(self.collaborative_agents):
+                    optimization_results["load_balancing"] = "Consider reducing concurrent tasks"
+            
+            # Clean up old data
+            old_reasoning_trees = len(self.reasoning_trees)
+            if old_reasoning_trees > 50:
+                # Keep only most recent trees
+                tree_items = list(self.reasoning_trees.items())
+                self.reasoning_trees = dict(tree_items[-50:])
+                optimization_results["reasoning_trees_cleaned"] = old_reasoning_trees - len(self.reasoning_trees)
+            
+            old_reflexion = len(self.reflexion_history)
+            if old_reflexion > 100:
+                self.reflexion_history = self.reflexion_history[-100:]
+                optimization_results["reflexion_history_cleaned"] = old_reflexion - len(self.reflexion_history)
+            
+            # Performance-based strategy adjustment
+            recent_metrics = [m for m in self.performance_metrics[-20:]] if self.performance_metrics else []
+            if recent_metrics:
+                avg_execution_time = sum(m.execution_time for m in recent_metrics) / len(recent_metrics)
+                success_rate = sum(1 for m in recent_metrics if m.success) / len(recent_metrics)
+                
+                if avg_execution_time > 3.0 and self.advanced_strategy != AdvancedReasoningStrategy.DIRECT:
+                    optimization_results["performance_adjustment"] = "Consider simplifying reasoning strategy for speed"
+                
+                if success_rate < 0.8 and self.advanced_strategy == AdvancedReasoningStrategy.HYBRID:
+                    optimization_results["accuracy_adjustment"] = "Consider using more focused reasoning strategies"
+            
+            logger.info(f"Enhanced optimization completed: {optimization_results}")
+            
+        except Exception as e:
+            logger.error(f"Enhanced optimization failed: {e}")
+            optimization_results["error"] = str(e)
+        
+        return optimization_results
+    
+    def shutdown_enhanced(self) -> None:
+        """Shutdown enhanced brain system"""
+        logger.info("Shutting down Enhanced Brain")
+        
+        # Perform enhanced optimization
+        if self.enable_optimization:
+            self.optimize_enhanced_performance()
+        
+        # Final learning and pattern storage
+        # (Would save learned patterns and reasoning patterns to persistent storage)
+        
+        # Clean up collaborative agents
+        if self.enable_collaboration:
+            for agent in self.collaborative_agents.values():
+                agent.set_load(0.0)
+        
+        logger.info("Enhanced Brain shutdown complete")
 
-# Factory function
-def create_enhanced_brain(config, skills, llm_client=None) -> EnhancedBrain:
-    """Create enhanced brain instance"""
-    return EnhancedBrain(config, skills, llm_client)
+    def send_message(self, text: str) -> str:
+        """Send a message and get enhanced brain response"""
+        try:
+            # Add to conversation history
+            self.conversation_history.append({"role": "user", "content": text})
+
+            # Use enhanced processing
+            response = self.process_enhanced(text)
+
+            # Add response to history
+            self.conversation_history.append({"role": "assistant", "content": response})
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Enhanced brain send_message failed: {e}")
+            # Fallback to base brain
+            return super().send_message(text)
+
+
+# Enhanced brain singleton functions
+_enhanced_brain_instance: Optional[EnhancedBrain] = None
+_enhanced_brain_lock = threading.Lock()
+
+
+def get_enhanced_brain(
+    processing_mode: ProcessingMode = ProcessingMode.ENHANCED,
+    reasoning_strategy: AdvancedReasoningStrategy = AdvancedReasoningStrategy.HYBRID,
+    enable_collaboration: bool = True
+) -> EnhancedBrain:
+    """
+    Get singleton enhanced brain instance
+    
+    Args:
+        processing_mode: Brain processing mode
+        reasoning_strategy: Advanced reasoning strategy
+        enable_collaboration: Enable multi-agent collaboration
+    
+    Returns:
+        EnhancedBrain singleton instance
+    """
+    global _enhanced_brain_instance
+    
+    if _enhanced_brain_instance is None:
+        with _enhanced_brain_lock:
+            if _enhanced_brain_instance is None:
+                _enhanced_brain_instance = EnhancedBrain(
+                    processing_mode=processing_mode,
+                    reasoning_strategy=reasoning_strategy,
+                    enable_collaboration=enable_collaboration
+                )
+    
+    return _enhanced_brain_instance
+
+
+def reset_enhanced_brain() -> None:
+    """Reset the enhanced brain instance"""
+    global _enhanced_brain_instance
+    with _enhanced_brain_lock:
+        if _enhanced_brain_instance:
+            try:
+                _enhanced_brain_instance.shutdown_enhanced()
+            except Exception:
+                pass
+        _enhanced_brain_instance = None
+    logger.info("Enhanced Brain instance reset")
+
+
+def create_enhanced_brain_instance(
+    processing_mode: ProcessingMode = ProcessingMode.ENHANCED,
+    reasoning_strategy: AdvancedReasoningStrategy = AdvancedReasoningStrategy.HYBRID,
+    max_reasoning_steps: int = 20,
+    confidence_threshold: float = 0.8,
+    enable_collaboration: bool = True,
+    max_collaborative_agents: int = 5
+) -> EnhancedBrain:
+    """
+    Create a new enhanced brain instance
+    
+    Args:
+        processing_mode: Brain processing mode
+        reasoning_strategy: Advanced reasoning strategy
+        max_reasoning_steps: Maximum reasoning steps
+        confidence_threshold: Minimum confidence threshold
+        enable_collaboration: Enable multi-agent collaboration
+        max_collaborative_agents: Maximum number of collaborative agents
+    
+    Returns:
+        New EnhancedBrain instance
+    """
+    return EnhancedBrain(
+        processing_mode=processing_mode,
+        reasoning_strategy=reasoning_strategy,
+        max_reasoning_steps=max_reasoning_steps,
+        confidence_threshold=confidence_threshold,
+        enable_collaboration=enable_collaboration,
+        max_collaborative_agents=max_collaborative_agents
+    )

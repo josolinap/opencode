@@ -1,0 +1,1 @@
+Code generation tool that produces code snippets from a natural language prompt. Optionally includes a short explanation explaining the approach.

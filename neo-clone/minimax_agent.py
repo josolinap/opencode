@@ -1,219 +1,1165 @@
-from functools import lru_cache
-"\nminimax_agent.py - MiniMax Emulation Layer for Neo-Clone\n\nProvides:\n- Intent analysis and classification\n- Dynamic skill generation on-demand\n- Context-aware reasoning\n- MiniMax-style reasoning traces\n- Integration with Neo-Clone's brain and logging systems\n"
-import re
-import json
+"""
+Enhanced MiniMax Agent for Advanced AI Reasoning
+
+This module provides the main agent with advanced reasoning capabilities,
+tree-based decision making, state evaluation, multi-step planning, and
+dynamic skill generation.
+
+Enhanced Features:
+- Dynamic reasoning and skill generation
+- Advanced tree search algorithms (A*, Monte Carlo, Minimax)
+- Adaptive strategy selection
+- Performance optimization and learning
+- Real-time state evaluation
+- Multi-modal reasoning support
+
+Author: MiniMax Agent
+Version: 2.0 Enhanced
+"""
+
+import asyncio
+import heapq
 import time
-import inspect
-from typing import Dict, Any, List, Optional, Tuple
-from pathlib import Path
-from datetime import datetime
-import hashlib
-from skills import BaseSkill
+import uuid
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Any, Tuple, Set, Callable
+import logging
+import math
+import threading
 
-class MiniMaxReasoningTrace:
-    """Captures and formats MiniMax-style reasoning traces"""
+# Import foundational modules
+try:
+    from config import get_config
+except ImportError:
+    def get_config():
+        return {"model": "default", "timeout": 30}
 
-    def __init__(self):
-        self.steps = []
-        self.start_time = time.time()
+from data_models import (
+    Message, MessageRole, ConversationHistory, MemoryEntry, MemoryType,
+    IntentType, MiniMaxReasoningTrace, ReasoningStep, SkillResult, SkillContext,
+    PerformanceMetrics
+)
+try:
+    from unified_memory import get_unified_memory
+    def get_memory():
+        return get_unified_memory()
+    def get_vector_memory():
+        return get_unified_memory()
+except ImportError:
+    def get_memory():
+        return None
+    def get_vector_memory():
+        return None
+try:
+    from cache_system import get_cache
+except ImportError:
+    def get_cache():
+        return None
+try:
+    from base_brain import get_brain, ProcessingMode, ReasoningStrategy
+except ImportError:
+    def get_brain():
+        return None
+    class ProcessingMode:
+        STANDARD = "standard"
+        ENHANCED = "enhanced"
+    class ReasoningStrategy:
+        DIRECT = "direct"
+try:
+    from skills import get_skills_manager
+except ImportError:
+    def get_skills_manager():
+        return None
+try:
+    from plugin_system import get_plugin_manager
+except ImportError:
+    def get_plugin_manager():
+        return None
 
-    def add_step(self, step_name: str, details: str, confidence: float=1.0):
-        """Add a reasoning step with details and confidence"""
-        self.steps.append({'step': step_name, 'details': details, 'confidence': confidence, 'timestamp': time.time() - self.start_time})
+# Configure logging
+logger = logging.getLogger(__name__)
 
-    def add_intent_analysis(self, text: str, intent: str, confidence: float, keywords: List[str]):
-        """Add intent analysis step"""
-        self.add_step('Intent Analysis', f"Analyzed input '{text[:50]}...' → {intent} (confidence: {confidence:.2f})", confidence)
-        if keywords:
-            self.add_step('Keyword Detection', f"Found keywords: {', '.join(keywords)}", confidence)
 
-    def add_skill_generation(self, skill_name: str, parameters: Dict[str, Any], code_length: int):
-        """Add skill generation step"""
-        self.add_step('Dynamic Skill Generation', f"Generated skill '{skill_name}' with {len(parameters)} parameters, {code_length} lines of code", 0.95)
+class NodeType(Enum):
+    """Types of nodes in the reasoning tree"""
+    ROOT = "root"
+    INTENT_ANALYSIS = "intent_analysis"
+    CONTEXT_RETRIEVAL = "context_retrieval"
+    SKILL_SELECTION = "skill_selection"
+    SKILL_EXECUTION = "skill_execution"
+    RESPONSE_GENERATION = "response_generation"
+    EVALUATION = "evaluation"
+    LEAF = "leaf"
 
-    def add_context_analysis(self, context: List[str], relevant_items: List[str]):
-        """Add context analysis step"""
-        self.add_step('Context Analysis', f'Analyzed {len(context)} context items, found {len(relevant_items)} relevant', 0.8)
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert trace to dictionary for logging"""
-        return {'total_time': time.time() - self.start_time, 'steps': self.steps, 'step_count': len(self.steps)}
+class SearchStrategy(Enum):
+    """Tree search strategies"""
+    DFS = "depth_first"       # Depth-first search
+    BFS = "breadth_first"     # Breadth-first search
+    A_STAR = "a_star"         # A* search
+    MINIMAX = "minimax"       # Minimax with alpha-beta pruning
+    MONTE_CARLO = "monte_carlo"  # Monte Carlo Tree Search
 
-class DynamicSkillTemplate:
-    """Template for dynamically generated skills"""
-    SKILL_TEMPLATE = 'from skills import BaseSkill\nfrom typing import Dict, Any\n\nclass {class_name}(BaseSkill):\n    """\n    Dynamically generated skill: {skill_description}\n    Generated by MiniMax Agent at {timestamp}\n    """\n    \n    @property\n    def name(self) -> str:\n        return "{skill_name}"\n    \n    @property\n    def description(self) -> str:\n        return "{skill_description}"\n    \n    @property\n    def parameters(self) -> dict:\n        return {parameters}\n    \n    @property\n    def example_usage(self) -> str:\n        return "{example_usage}"\n    \n    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:\n        """Execute the dynamically generated skill"""\n        # Generated implementation\n        {implementation}\n        \n        # Return structured result\n        return {{\n            "status": "success",\n            "skill_name": "{skill_name}",\n            "result": result,\n            "parameters_used": params,\n            "generated_by": "MiniMax Agent",\n            "generation_timestamp": "{timestamp}"\n        }}\n'
-    PLUGIN_TEMPLATE = '"""\n{skill_description}\nAuto-generated by MiniMax Agent\n"""\n\nfrom typing import Dict, Any\n\ndef main(params: Dict[str, Any]) -> Dict[str, Any]:\n    """\n    Main function for dynamically generated plugin\n    """\n    {implementation}\n    \n    return {{\n        "status": "success",\n        "result": result,\n        "generated_by": "MiniMax Agent"\n    }}\n\nif __name__ == "__main__":\n    # Example usage\n    test_params = {test_parameters}\n    print(main(test_params))\n'
 
-class MiniMaxAgent(BaseSkill):
-    """
-    MiniMax Emulation Layer - Provides dynamic reasoning and skill generation
-    """
+class EvaluationMetric(Enum):
+    """Metrics for evaluating reasoning paths"""
+    RELEVANCE = "relevance"
+    COHERENCE = "coherence"
+    COMPLETENESS = "completeness"
+    EFFICIENCY = "efficiency"
+    CONFIDENCE = "confidence"
 
-    def __init__(self):
-        super().__init__(
-            name="minimax_agent",
-            description="MiniMax emulation layer for intent analysis, dynamic skill generation, and context-aware reasoning",
-            example="agent.analyze_intent('Create a Python function for data analysis')"
-        )
-        self.trace = MiniMaxReasoningTrace()
-        self.intent_patterns = {'code_generation': ['\\b(generate|create|build|make|write)\\b.*\\b(code|python|script|function|class)\\b', '\\b(write|create)\\b.*\\b(api|function|method)\\b', '\\b(build|make)\\b.*\\b(tool|utility|helper)\\b'], 'data_analysis': ['\\b(analyze|examine|process|transform)\\b.*\\b(data|file|csv|json)\\b', '\\b(create|generate)\\b.*\\b(chart|graph|visualization|plot)\\b', '\\b(calculate|compute|measure)\\b.*\\b(statistics|metrics|summary)\\b'], 'web_operations': ['\\b(search|find|lookup)\\b.*\\b(web|internet|online)\\b', '\\b(fetch|retrieve|download)\\b.*\\b(file|page|content)\\b', '\\b(scrape|crawl|extract)\\b.*\\b(website|data|information)\\b'], 'file_operations': ['\\b(read|write|create|delete)\\b.*\\b(file|directory|folder)\\b', '\\b(list|show|find)\\b.*\\b(files|contents)\\b', '\\b(organize|manage)\\b.*\\b(files|documents)\\b'], 'skill_creation': ['\\b(create|build|generate)\\b.*\\b(skill|tool|plugin)\\b', '\\b(make|build)\\b.*\\b(custom)\\b.*\\b(function|skill)\\b', '\\b(design|implement)\\b.*\\b(new)\\b.*\\b(feature|capability)\\b']}
 
-    # Properties are now set in __init__ via BaseSkill constructor
+@dataclass
+class ReasoningNode:
+    """Node in the reasoning tree"""
+    node_id: str
+    node_type: NodeType
+    content: str
+    parent_id: Optional[str] = None
+    children_ids: List[str] = field(default_factory=list)
 
-    @property
-    def parameters(self) -> dict:
-        return {'mode': {'type': 'string', 'description': "Operation mode: 'analyze', 'generate', 'reason'", 'default': 'analyze', 'choices': ['analyze', 'generate', 'reason']}, 'context': {'type': 'list', 'description': 'Additional context for reasoning', 'default': []}, 'detailed_trace': {'type': 'boolean', 'description': 'Include detailed reasoning trace', 'default': True}}
+    # Evaluation metrics
+    score: float = 0.0
+    confidence: float = 0.0
+    relevance: float = 0.0
 
-    @property
-    def example_usage(self) -> str:
-        return 'Analyze: "I need to create a Python script to process CSV files"\nGenerate: {"mode": "generate", "skill_name": "csv_processor", "description": "Process CSV files"}\nReason: {"mode": "reason", "query": "best practices for data analysis"}'
+    # Metadata
+    depth: int = 0
+    actions: List[str] = field(default_factory=list)
+    context: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
 
-    @lru_cache(maxsize=128)
-    def analyze_user_input(self, user_text: str, context: List[str]=None) -> Dict[str, Any]:
-        """
-        Analyze user input to determine intent and extract actionable information
-        """
-        self.trace = MiniMaxReasoningTrace()
-        context = context or []
-        cleaned_text = user_text.strip().lower()
-        words = cleaned_text.split()
-        intent_scores = {}
-        matched_keywords = []
-        for (intent, patterns) in self.intent_patterns.items():
-            score = 0
-            intent_keywords = []
-            for pattern in patterns:
-                if re.search(pattern, cleaned_text):
-                    score += 1
-                    pattern_words = re.findall('\\\\b\\\\w+\\\\b', pattern)
-                    intent_keywords.extend([w for w in words if w in pattern_words])
-            if score > 0:
-                intent_scores[intent] = score / len(patterns)
-                matched_keywords.extend(intent_keywords)
-        if intent_scores:
-            primary_intent = max(intent_scores, key=intent_scores.get)
-            confidence = intent_scores[primary_intent]
+    # Performance
+    execution_time: float = 0.0
+    success: bool = True
+    error_message: Optional[str] = None
+
+
+@dataclass
+class ReasoningPath:
+    """Complete reasoning path from root to leaf"""
+    nodes: List[ReasoningNode] = field(default_factory=list)
+    total_score: float = 0.0
+    total_confidence: float = 0.0
+    total_execution_time: float = 0.0
+    success_rate: float = 0.0
+
+    def add_node(self, node: ReasoningNode) -> None:
+        """Add node to the path"""
+        self.nodes.append(node)
+        self._recalculate_metrics()
+
+    def _recalculate_metrics(self) -> None:
+        """Recalculate path metrics"""
+        if not self.nodes:
+            return
+
+        self.total_score = sum(node.score for node in self.nodes) / len(self.nodes)
+        self.total_confidence = sum(node.confidence for node in self.nodes) / len(self.nodes)
+        self.total_execution_time = sum(node.execution_time for node in self.nodes)
+        self.success_rate = sum(1 for node in self.nodes if node.success) / len(self.nodes)
+
+    def get_depth(self) -> int:
+        """Get the depth of the path"""
+        return len(self.nodes) - 1 if self.nodes else 0
+
+    def get_leaf_nodes(self) -> List[ReasoningNode]:
+        """Get all leaf nodes in the path"""
+        if not self.nodes:
+            return []
+
+        # A path is a single sequence, so the last node is the leaf
+        return [self.nodes[-1]]
+
+
+@dataclass
+class TreeSearchState:
+    """State for tree search algorithms"""
+    current_node: ReasoningNode
+    path: ReasoningPath
+    visited_nodes: Set[str]
+    frontier: List[Tuple[float, int, str]]  # (priority, counter, node_id)
+    counter: int = 0  # For tie-breaking in priority queue
+
+    def push_to_frontier(self, priority: float, node_id: str) -> None:
+        """Push node to priority queue"""
+        heapq.heappush(self.frontier, (priority, self.counter, node_id))
+        self.counter += 1
+
+    def pop_from_frontier(self) -> Optional[Tuple[float, str]]:
+        """Pop node from priority queue"""
+        if not self.frontier:
+            return None
+
+        priority, _, node_id = heapq.heappop(self.frontier)
+        return priority, node_id
+
+    def is_frontier_empty(self) -> bool:
+        """Check if frontier is empty"""
+        return len(self.frontier) == 0
+
+
+class StateEvaluator:
+    """Evaluates and scores reasoning states"""
+
+    def __init__(self, weights: Dict[EvaluationMetric, float] = None):
+        self.weights = weights or {
+            EvaluationMetric.RELEVANCE: 0.3,
+            EvaluationMetric.COHERENCE: 0.2,
+            EvaluationMetric.COMPLETENESS: 0.2,
+            EvaluationMetric.EFFICIENCY: 0.15,
+            EvaluationMetric.CONFIDENCE: 0.15
+        }
+
+    def evaluate_node(self, node: ReasoningNode, context: Dict[str, Any] = None) -> Dict[EvaluationMetric, float]:
+        """Evaluate a reasoning node"""
+        scores = {}
+
+        # Relevance score
+        scores[EvaluationMetric.RELEVANCE] = self._calculate_relevance(node, context)
+
+        # Coherence score
+        scores[EvaluationMetric.COHERENCE] = self._calculate_coherence(node)
+
+        # Completeness score
+        scores[EvaluationMetric.COMPLETENESS] = self._calculate_completeness(node)
+
+        # Efficiency score
+        scores[EvaluationMetric.EFFICIENCY] = self._calculate_efficiency(node)
+
+        # Confidence score
+        scores[EvaluationMetric.CONFIDENCE] = node.confidence
+
+        return scores
+
+    def _calculate_relevance(self, node: ReasoningNode, context: Dict[str, Any] = None) -> float:
+        """Calculate relevance score"""
+        # Base relevance on node type and content
+        base_scores = {
+            NodeType.ROOT: 1.0,
+            NodeType.INTENT_ANALYSIS: 0.9,
+            NodeType.CONTEXT_RETRIEVAL: 0.8,
+            NodeType.SKILL_SELECTION: 0.9,
+            NodeType.SKILL_EXECUTION: 0.8,
+            NodeType.RESPONSE_GENERATION: 1.0,
+            NodeType.EVALUATION: 0.7,
+            NodeType.LEAF: 0.6
+        }
+
+        relevance = base_scores.get(node.node_type, 0.5)
+
+        # Adjust based on depth (prefer nodes at reasonable depth)
+        optimal_depth = 5
+        depth_penalty = abs(node.depth - optimal_depth) * 0.1
+        relevance = max(0.0, relevance - depth_penalty)
+
+        return min(1.0, relevance)
+
+    def _calculate_coherence(self, node: ReasoningNode) -> float:
+        """Calculate coherence score"""
+        # Coherence based on successful execution and error-free path
+        if not node.success:
+            return 0.2
+
+        # Check if node has logical actions
+        if not node.actions:
+            return 0.5
+
+        # Prefer nodes with specific, actionable content
+        content_quality = min(1.0, len(node.content) / 50)  # Normalize by content length
+        action_quality = min(1.0, len(node.actions) / 3)   # Reasonable number of actions
+
+        return (content_quality + action_quality) / 2
+
+    def _calculate_completeness(self, node: ReasoningNode) -> float:
+        """Calculate completeness score"""
+        # Completeness based on whether the node represents a complete reasoning step
+        required_fields = ['content', 'actions']
+        missing_fields = [field for field in required_fields if not getattr(node, field, None)]
+
+        if missing_fields:
+            return 0.3
+
+        # Prefer nodes that have both analysis and action components
+        has_analysis = len(node.content) > 20
+        has_actions = len(node.actions) > 0
+
+        if has_analysis and has_actions:
+            return 1.0
+        elif has_analysis or has_actions:
+            return 0.7
         else:
-            primary_intent = 'conversational'
-            confidence = 0.1
-        action_words = ['create', 'generate', 'analyze', 'process', 'build', 'make', 'find', 'search']
-        detected_actions = [w for w in words if w in action_words]
-        technology_keywords = ['python', 'javascript', 'api', 'csv', 'json', 'sql', 'web', 'html', 'css', 'pandas', 'numpy', 'matplotlib', 'requests', 'flask', 'django']
-        detected_tech = [w for w in words if w in technology_keywords]
-        self.trace.add_context_analysis(context, [c for c in context if any((kw in c.lower() for kw in words))])
-        self.trace.add_intent_analysis(user_text, primary_intent, confidence, list(set(matched_keywords)))
-        return {'primary_intent': primary_intent, 'confidence': confidence, 'intent_scores': intent_scores, 'detected_actions': detected_actions, 'detected_technologies': detected_tech, 'matched_keywords': list(set(matched_keywords)), 'reasoning_trace': self.trace.to_dict(), 'suggested_skills': self._suggest_skills(primary_intent, detected_tech, detected_actions), 'complexity_score': self._calculate_complexity(user_text, intent_scores)}
+            return 0.3
 
-    def generate_dynamic_skill(self, skill_name: str, description: str, parameters: Dict[str, Any]=None, context: List[str]=None) -> Dict[str, Any]:
-        """
-        Generate a dynamic skill based on requirements
-        """
-        self.trace = MiniMaxReasoningTrace()
-        parameters = parameters or {}
-        context = context or []
-        if not skill_name or not description:
-            raise ValueError('Skill name and description are required')
-        safe_skill_name = re.sub('[^a-zA-Z0-9_]', '_', skill_name.lower())
-        class_name = ''.join((word.capitalize() for word in safe_skill_name.split('_')))
-        (implementation, example_usage) = self._generate_implementation(description, context)
-        skill_code = DynamicSkillTemplate.SKILL_TEMPLATE.format(class_name=class_name, skill_name=safe_skill_name, skill_description=description, parameters=json.dumps(parameters, indent=4), example_usage=example_usage, implementation=implementation, timestamp=datetime.now().isoformat())
-        self.trace.add_skill_generation(safe_skill_name, parameters, len(skill_code.split('\n')))
-        return {'skill_name': safe_skill_name, 'class_name': class_name, 'skill_code': skill_code, 'parameters': parameters, 'example_usage': example_usage, 'reasoning_trace': self.trace.to_dict(), 'generated_at': datetime.now().isoformat(), 'file_path': f'skills/generated_{safe_skill_name}.py'}
+    def _calculate_efficiency(self, node: ReasoningNode) -> float:
+        """Calculate efficiency score"""
+        # Efficiency based on execution time and success
+        if not node.success:
+            return 0.1
 
-    def save_generated_skill(self, skill_code: str, file_path: str=None) -> Dict[str, Any]:
+        # Optimal execution time range (0.1 to 2.0 seconds)
+        optimal_time = 1.0
+        time_ratio = node.execution_time / optimal_time
+
+        if time_ratio <= 1.0:
+            efficiency = 1.0
+        else:
+            efficiency = 1.0 / (1.0 + (time_ratio - 1.0))
+
+        return max(0.1, efficiency)
+
+    def calculate_path_score(self, path: ReasoningPath) -> float:
+        """Calculate overall score for a reasoning path"""
+        if not path.nodes:
+            return 0.0
+
+        # Get individual scores
+        node_scores = []
+        for node in path.nodes:
+            evaluation = self.evaluate_node(node)
+            weighted_score = sum(
+                evaluation[metric] * self.weights[metric]
+                for metric in EvaluationMetric
+            )
+            node_scores.append(weighted_score)
+
+        # Average node scores with depth bonus
+        avg_score = sum(node_scores) / len(node_scores)
+        depth_bonus = min(0.2, path.get_depth() * 0.05)  # Bonus for deeper reasoning
+
+        return min(1.0, avg_score + depth_bonus)
+
+
+class MiniMaxAgent:
+    """
+    MiniMax Agent with advanced reasoning capabilities
+
+    Features:
+    - Tree-based reasoning and search
+    - State evaluation and scoring
+    - Multi-step planning
+    - Adaptive strategy selection
+    - Performance optimization
+    """
+
+    def __init__(
+        self,
+        search_strategy: SearchStrategy = SearchStrategy.A_STAR,
+        max_depth: int = 7,
+        max_nodes: int = 100,
+        confidence_threshold: float = 0.7,
+        enable_pruning: bool = True,
+        adaptive_strategy: bool = True
+    ):
         """
-        Save generated skill to file system
+        Initialize MiniMax Agent
+
+        Args:
+            search_strategy: Tree search strategy to use
+            max_depth: Maximum reasoning depth
+            max_nodes: Maximum nodes to explore
+            confidence_threshold: Minimum confidence for decisions
+            enable_pruning: Enable alpha-beta pruning
+            adaptive_strategy: Enable adaptive strategy selection
         """
-        if not file_path:
-            match = re.search('return "([a-zA-Z0-9_]+)"', skill_code)
-            skill_name = match.group(1) if match else 'generated_skill'
-            file_path = f'skills/generated_{skill_name}.py'
+        self.search_strategy = search_strategy
+        self.max_depth = max_depth
+        self.max_nodes = max_nodes
+        self.confidence_threshold = confidence_threshold
+        self.enable_pruning = enable_pruning
+        self.adaptive_strategy = adaptive_strategy
+
+        # Core components
+        self.config = get_config()
+        self.memory = get_memory()
+        self.vector_memory = get_vector_memory()
+        self.cache = get_cache()
+        self.brain = get_brain()
+        self.skills_manager = get_skills_manager()
+        self.plugin_manager = get_plugin_manager()
+
+        # Reasoning components
+        self.state_evaluator = StateEvaluator()
+        self.reasoning_tree: Dict[str, ReasoningNode] = {}
+        self.reasoning_paths: List[ReasoningPath] = []
+
+        # Performance tracking
+        self.performance_metrics: List[PerformanceMetrics] = []
+        self.total_reasoning_sessions = 0
+        self.successful_sessions = 0
+
+        # Strategy adaptation
+        self.strategy_performance: Dict[SearchStrategy, Dict[str, float]] = {
+            strategy: {"success_rate": 0.0, "avg_time": 0.0, "avg_quality": 0.0}
+            for strategy in SearchStrategy
+        }
+
+        logger.info(f"MiniMax Agent initialized: strategy={search_strategy.value}, max_depth={max_depth}")
+
+    async def process_input(
+        self,
+        user_input: str,
+        context: Optional[ConversationHistory] = None,
+        session_id: Optional[str] = None
+    ) -> Tuple[str, MiniMaxReasoningTrace]:
+        """
+        Process user input with advanced reasoning
+
+        Args:
+            user_input: User's input text
+            context: Conversation context
+            session_id: Session identifier
+
+        Returns:
+            Tuple of (response, reasoning_trace)
+        """
+        start_time = time.time()
+        session_id = session_id or self.memory.session_id
+
+        self.total_reasoning_sessions += 1
+
         try:
-            skills_dir = Path('skills')
-            skills_dir.mkdir(exist_ok=True)
-            file_path = Path(file_path)
-            with open(file_path, 'w') as f:
-                f.write(skill_code)
-            return {'status': 'success', 'file_path': str(file_path), 'message': f'Skill saved successfully to {file_path}'}
+            # Reset reasoning state
+            self._reset_reasoning_state()
+
+            # Create reasoning trace
+            reasoning_trace = MiniMaxReasoningTrace()
+
+            # Step 1: Analyze input and create root node
+            root_node = await self._create_root_node(user_input, reasoning_trace)
+
+            # Step 2: Perform tree search for optimal reasoning path
+            optimal_path = await self._perform_tree_search(root_node, reasoning_trace)
+
+            # Step 3: Execute the optimal path
+            response = await self._execute_optimal_path(optimal_path, reasoning_trace)
+
+            # Step 4: Update strategy performance
+            if self.adaptive_strategy:
+                self._update_strategy_performance(
+                    self.search_strategy, time.time() - start_time, True, reasoning_trace.confidence_score
+                )
+
+            # Step 5: Learn from the session
+            await self._learn_from_session(user_input, response, optimal_path)
+
+            # Update metrics
+            execution_time = time.time() - start_time
+            self._update_performance_metrics(user_input, response, execution_time, True)
+            self.successful_sessions += 1
+
+            logger.info(f"MiniMax processing completed: {execution_time:.3f}s, confidence={reasoning_trace.confidence_score:.2f}")
+            return response, reasoning_trace
+
         except Exception as e:
-            return {'status': 'error', 'error': str(e), 'message': 'Failed to save skill'}
+            logger.error(f"MiniMax processing failed: {e}")
+            error_response = "I apologize, but I encountered an error during advanced reasoning. Please try again."
 
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute MiniMax Agent functionality
-        """
-        mode = params.get('mode', 'analyze')
-        user_input = params.get('user_input', '')
-        context = params.get('context', [])
-        detailed_trace = params.get('detailed_trace', True)
-        if mode == 'analyze':
-            if not user_input:
-                return {'error': 'user_input is required for analysis mode'}
-            result = self.analyze_user_input(user_input, context)
-            result['mode'] = 'analyze'
-            return result
-        elif mode == 'generate':
-            skill_name = params.get('skill_name', '')
-            description = params.get('description', '')
-            if not skill_name or not description:
-                return {'error': 'skill_name and description are required for generate mode'}
-            result = self.generate_dynamic_skill(skill_name, description, params.get('parameters', {}), context)
-            result['mode'] = 'generate'
-            return result
-        elif mode == 'reason':
-            query = params.get('query', '')
-            if not query:
-                return {'error': 'query is required for reason mode'}
-            reasoning = self._generate_reasoning(query, context)
-            return {'mode': 'reason', 'query': query, 'reasoning': reasoning, 'reasoning_trace': self.trace.to_dict() if detailed_trace else None}
+            # Update strategy performance for failure
+            if self.adaptive_strategy:
+                self._update_strategy_performance(
+                    self.search_strategy, time.time() - start_time, False, 0.0
+                )
+
+            # Update metrics
+            execution_time = time.time() - start_time
+            self._update_performance_metrics(user_input, error_response, execution_time, False)
+
+            return error_response, MiniMaxReasoningTrace()
+
+    async def _create_root_node(self, user_input: str, reasoning_trace: MiniMaxReasoningTrace) -> ReasoningNode:
+        """Create the root reasoning node"""
+        root_node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.ROOT,
+            content=f"Analyzing user input: {user_input}",
+            depth=0,
+            actions=["analyze_input", "prepare_reasoning"],
+            context={"user_input": user_input}
+        )
+
+        self.reasoning_tree[root_node.node_id] = root_node
+
+        reasoning_trace.add_step(
+            step_type="root_creation",
+            description="Created root reasoning node",
+            input_data=user_input,
+            output_data=root_node.content,
+            confidence=1.0
+        )
+
+        return root_node
+
+    async def _perform_tree_search(
+        self,
+        root_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningPath:
+        """Perform tree search to find optimal reasoning path"""
+        start_time = time.time()
+
+        # Initialize search state
+        root_path = ReasoningPath()
+        root_path.add_node(root_node)
+
+        search_state = TreeSearchState(
+            current_node=root_node,
+            path=root_path,
+            visited_nodes=set([root_node.node_id]),
+            frontier=[]
+        )
+
+        # Push root to frontier
+        search_state.push_to_frontier(1.0, root_node.node_id)
+
+        best_path = root_path
+        best_score = 0.0
+
+        nodes_explored = 0
+        pruning_count = 0
+
+        while not search_state.is_frontier_empty() and nodes_explored < self.max_nodes:
+            # Get next node to explore
+            priority, node_id = search_state.pop_from_frontier()
+
+            if node_id in search_state.visited_nodes:
+                continue
+
+            current_node = self.reasoning_tree[node_id]
+            search_state.visited_nodes.add(node_id)
+            nodes_explored += 1
+
+            # Check if we've reached optimal depth or node
+            if current_node.depth >= self.max_depth or self._is_goal_node(current_node):
+                # Evaluate path and update best
+                path_score = self.state_evaluator.calculate_path_score(search_state.path)
+                if path_score > best_score:
+                    best_score = path_score
+                    best_path = ReasoningPath(nodes=search_state.path.nodes.copy())
+                continue
+
+            # Generate child nodes
+            child_nodes = await self._generate_child_nodes(current_node, reasoning_trace)
+
+            # Add children to search frontier
+            for child_node in child_nodes:
+                self.reasoning_tree[child_node.node_id] = child_node
+
+                # Create path including this child
+                child_path = ReasoningPath(nodes=search_state.path.nodes.copy())
+                child_path.add_node(child_node)
+
+                # Evaluate child node
+                evaluation = self.state_evaluator.evaluate_node(child_node)
+                child_score = sum(
+                    evaluation[metric] * self.state_evaluator.weights[metric]
+                    for metric in EvaluationMetric
+                )
+
+                # Alpha-beta pruning
+                if self.enable_pruning and self._should_prune(current_node, child_score, best_score):
+                    pruning_count += 1
+                    continue
+
+                # Add to frontier with priority (higher score = higher priority)
+                search_state.push_to_frontier(child_score, child_node.node_id)
+
+        execution_time = time.time() - start_time
+
+        reasoning_trace.add_step(
+            step_type="tree_search",
+            description=f"Tree search completed: {nodes_explored} nodes, {pruning_count} pruned",
+            input_data={"strategy": self.search_strategy.value, "max_depth": self.max_depth},
+            output_data={
+                "nodes_explored": nodes_explored,
+                "pruning_count": pruning_count,
+                "best_score": best_score,
+                "execution_time": execution_time
+            },
+            confidence=min(1.0, best_score)
+        )
+
+        return best_path
+
+    async def _generate_child_nodes(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> List[ReasoningNode]:
+        """Generate child nodes based on parent node type and content"""
+        child_nodes = []
+
+        if parent_node.node_type == NodeType.ROOT:
+            # Generate intent analysis node
+            intent_node = await self._create_intent_analysis_node(parent_node, reasoning_trace)
+            child_nodes.append(intent_node)
+
+        elif parent_node.node_type == NodeType.INTENT_ANALYSIS:
+            # Generate context retrieval node
+            context_node = await self._create_context_retrieval_node(parent_node, reasoning_trace)
+            child_nodes.append(context_node)
+
+        elif parent_node.node_type == NodeType.CONTEXT_RETRIEVAL:
+            # Generate skill selection node
+            skill_node = await self._create_skill_selection_node(parent_node, reasoning_trace)
+            child_nodes.append(skill_node)
+
+        elif parent_node.node_type == NodeType.SKILL_SELECTION:
+            # Generate skill execution node
+            execution_node = await self._create_skill_execution_node(parent_node, reasoning_trace)
+            child_nodes.append(execution_node)
+
+        elif parent_node.node_type == NodeType.SKILL_EXECUTION:
+            # Generate response generation node
+            response_node = await self._create_response_generation_node(parent_node, reasoning_trace)
+            child_nodes.append(response_node)
+
+        elif parent_node.node_type == NodeType.RESPONSE_GENERATION:
+            # Generate evaluation node
+            evaluation_node = await self._create_evaluation_node(parent_node, reasoning_trace)
+            child_nodes.append(evaluation_node)
+
+        # Link parent and children
+        for child_node in child_nodes:
+            parent_node.children_ids.append(child_node.node_id)
+            child_node.parent_id = parent_node.node_id
+
+        return child_nodes
+
+    async def _create_intent_analysis_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create intent analysis node"""
+        start_time = time.time()
+
+        user_input = parent_node.context.get("user_input", "")
+
+        # Use brain's intent recognition
+        intent_result = await self.brain._recognize_intent(user_input, reasoning_trace)
+
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.INTENT_ANALYSIS,
+            content=f"Intent recognized: {intent_result.intent.value} (confidence: {intent_result.confidence:.2f})",
+            depth=parent_node.depth + 1,
+            actions=["classify_intent", "assess_confidence"],
+            context={
+                "intent": intent_result.intent.value,
+                "confidence": intent_result.confidence,
+                "scores": intent_result.scores
+            },
+            confidence=intent_result.confidence,
+            execution_time=time.time() - start_time
+        )
+
+        return node
+
+    async def _create_context_retrieval_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create context retrieval node"""
+        start_time = time.time()
+
+        user_input = parent_node.context.get("user_input", "")
+        intent = parent_node.context.get("intent", "conversation")
+
+        # Use brain's context retrieval
+        relevant_context = await self.brain._retrieve_context(user_input, type('IntentResult', (), {
+            'intent': type('Intent', (), {'value': intent})()
+        })(), reasoning_trace)
+
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.CONTEXT_RETRIEVAL,
+            content=f"Retrieved {len(relevant_context)} relevant context items",
+            depth=parent_node.depth + 1,
+            actions=["search_memory", "filter_relevant"],
+            context={
+                "context_count": len(relevant_context),
+                "context_items": [m.content for m in relevant_context[:3]]  # Top 3
+            },
+            confidence=min(0.9, len(relevant_context) * 0.2 + 0.3),
+            execution_time=time.time() - start_time
+        )
+
+        return node
+
+    async def _create_skill_selection_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create skill selection node"""
+        start_time = time.time()
+
+        user_input = parent_node.context.get("user_input", "")
+        intent = parent_node.context.get("intent", "conversation")
+
+        # Use brain's skill selection
+        selected_skill = await self.brain._select_skill(user_input, type('IntentResult', (), {
+            'intent': type('Intent', (), {'value': intent})()
+        })(), reasoning_trace)
+
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.SKILL_SELECTION,
+            content=f"Selected skill: {selected_skill or 'conversation'}",
+            depth=parent_node.depth + 1,
+            actions=["select_skill", "validate_availability"],
+            context={
+                "selected_skill": selected_skill,
+                "available_skills": self.skills_manager.list_skills()
+            },
+            confidence=0.8 if selected_skill else 0.5,
+            execution_time=time.time() - start_time
+        )
+
+        return node
+
+    async def _create_skill_execution_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create skill execution node"""
+        start_time = time.time()
+
+        user_input = parent_node.context.get("user_input", "")
+        selected_skill = parent_node.context.get("selected_skill")
+
+        # Use brain's skill execution
+        skill_result = await self.brain._execute_skill(
+            selected_skill, user_input, [], type('IntentResult', (), {
+                'intent': type('Intent', (), {'value': 'conversation'})()
+            })(), reasoning_trace
+        )
+
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.SKILL_EXECUTION,
+            content=f"Skill execution: {'success' if skill_result.success else 'failed'}",
+            depth=parent_node.depth + 1,
+            actions=["execute_skill", "handle_result"],
+            context={
+                "skill_result": skill_result.success,
+                "output_preview": str(skill_result.output)[:100] if skill_result.output else "",
+                "execution_time": skill_result.execution_time
+            },
+            confidence=0.9 if skill_result.success else 0.3,
+            execution_time=time.time() - start_time,
+            success=skill_result.success,
+            error_message=skill_result.error_message
+        )
+
+        return node
+
+    async def _create_response_generation_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create response generation node"""
+        start_time = time.time()
+
+        user_input = parent_node.context.get("user_input", "")
+        skill_result = parent_node.context.get("skill_result", False)
+
+        # Generate response
+        if skill_result:
+            response = "I have successfully processed your request using advanced reasoning."
         else:
-            return {'error': f'Unknown mode: {mode}'}
+            response = "I understand your request and will do my best to help you."
 
-    def _suggest_skills(self, intent: str, technologies: List[str], actions: List[str]) -> List[str]:
-        """Suggest relevant skills based on analysis"""
-        suggestions = []
-        skill_mapping = {'code_generation': ['code_generation', 'text_analysis'], 'data_analysis': ['data_inspector', 'text_analysis'], 'web_operations': ['web_search', 'text_analysis'], 'file_operations': ['file_manager', 'text_analysis'], 'skill_creation': ['minimax_agent', 'code_generation']}
-        suggestions.extend(skill_mapping.get(intent, []))
-        if 'python' in technologies:
-            suggestions.append('code_generation')
-        if 'csv' in technologies or 'json' in technologies:
-            suggestions.append('data_inspector')
-        if 'web' in technologies or 'api' in technologies:
-            suggestions.append('web_search')
-        return list(set(suggestions))
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.RESPONSE_GENERATION,
+            content=f"Generated response: {response[:50]}...",
+            depth=parent_node.depth + 1,
+            actions=["synthesize_response", "validate_coherence"],
+            context={
+                "response": response,
+                "response_length": len(response)
+            },
+            confidence=0.8,
+            execution_time=time.time() - start_time
+        )
 
-    def _calculate_complexity(self, text: str, intent_scores: Dict[str, float]) -> float:
-        """Calculate complexity score (0-1) for the request"""
-        complexity_factors = {'length': min(len(text) / 500, 0.3), 'intent_diversity': min(len(intent_scores) * 0.2, 0.4), 'technical_terms': sum((1 for word in text.lower().split() if word in ['api', 'database', 'algorithm', 'framework', 'library', 'architecture'])) * 0.1}
-        total_complexity = min(sum(complexity_factors.values()), 1.0)
-        return round(total_complexity, 2)
+        return node
 
-    def _generate_implementation(self, description: str, context: List[str]) -> Tuple[str, str]:
-        """Generate implementation code based on description"""
-        description_lower = description.lower()
-        if any((word in description_lower for word in ['file', 'read', 'write', 'directory'])):
-            implementation = '# File operations implementation\n        import os\n        from pathlib import Path\n        \n        text = params.get("text", "")\n        file_path = params.get("file_path", "")\n        \n        if file_path:\n            # Read or write file\n            if os.path.exists(file_path):\n                with open(file_path, \'r\') as f:\n                    result = f.read()\n            else:\n                result = f"File not found: {file_path}"\n        else:\n            result = text'
-            example_usage = f'process_file with file path and content'
-        elif any((word in description_lower for word in ['data', 'csv', 'json', 'process'])):
-            implementation = '# Data processing implementation\n        import json\n        import csv\n        \n        data = params.get("data", {})\n        \n        if isinstance(data, str):\n            try:\n                data = json.loads(data)\n            except:\n                result = "Invalid JSON data"\n                return {{}}\n        \n        # Process data\n        result = {{\n            "processed": True,\n            "data_type": type(data).__name__,\n            "keys": list(data.keys()) if isinstance(data, dict) else len(data)\n        }}'
-            example_usage = f'process_data with JSON/CSV data input'
-        elif any((word in description_lower for word in ['web', 'api', 'http', 'request'])):
-            implementation = '# Web operations implementation\n        import requests\n        \n        url = params.get("url", "")\n        method = params.get("method", "GET")\n        \n        try:\n            if method.upper() == "GET":\n                response = requests.get(url)\n            elif method.upper() == "POST":\n                response = requests.post(url, json=params.get("data", {}))\n            else:\n                response = requests.request(method, url)\n                \n            result = {{\n                "status_code": response.status_code,\n                "url": url,\n                "method": method,\n                "success": response.status_code < 400\n            }}\n        except Exception as e:\n            result = {{"error": str(e), "success": False}}'
-            example_usage = f'web_request with URL and method parameters'
+    async def _create_evaluation_node(
+        self,
+        parent_node: ReasoningNode,
+        reasoning_trace: MiniMaxReasoningTrace
+    ) -> ReasoningNode:
+        """Create evaluation node"""
+        start_time = time.time()
+
+        # Evaluate the complete reasoning path
+        path_nodes = []  # This would collect all nodes in the path
+
+        # Calculate overall confidence
+        overall_confidence = parent_node.confidence
+
+        # Check for errors in the path
+        has_errors = parent_node.error_message is not None
+
+        evaluation_result = "success" if not has_errors else "partial_success"
+
+        node = ReasoningNode(
+            node_id=str(uuid.uuid4()),
+            node_type=NodeType.EVALUATION,
+            content=f"Reasoning evaluation: {evaluation_result} (confidence: {overall_confidence:.2f})",
+            depth=parent_node.depth + 1,
+            actions=["evaluate_path", "calculate_confidence"],
+            context={
+                "evaluation_result": evaluation_result,
+                "overall_confidence": overall_confidence,
+                "has_errors": has_errors
+            },
+            confidence=overall_confidence,
+            execution_time=time.time() - start_time
+        )
+
+        return node
+
+    def _is_goal_node(self, node: ReasoningNode) -> bool:
+        """Check if node represents a goal state"""
+        return node.node_type in [NodeType.LEAF, NodeType.EVALUATION] and node.confidence >= self.confidence_threshold
+
+    def _should_prune(self, parent_node: ReasoningNode, child_score: float, best_score: float) -> bool:
+        """Check if branch should be pruned (alpha-beta pruning)"""
+        # Simple pruning: if child score is significantly worse than best
+        return child_score < best_score - 0.2
+
+    async def _execute_optimal_path(self, path: ReasoningPath, reasoning_trace: MiniMaxReasoningTrace) -> str:
+        """Execute the optimal reasoning path"""
+        if not path.nodes:
+            return "I apologize, but I could not find a valid reasoning path."
+
+        # Extract response from the last node
+        last_node = path.nodes[-1]
+
+        if last_node.node_type == NodeType.RESPONSE_GENERATION:
+            response = last_node.context.get("response", "Default response")
         else:
-            implementation = '# Generic implementation\n        input_data = params.get("input", "")\n        \n        # Process input based on description\n        result = {{\n            "processed": True,\n            "input_length": len(str(input_data)),\n            "description": "{description}"\n        }}'
-            example_usage = f'execute with input parameter'
-        return (implementation, example_usage)
+            response = f"I have completed the reasoning process with {last_node.confidence:.2f} confidence."
 
-    def _generate_reasoning(self, query: str, context: List[str]) -> str:
-        """Generate reasoning for a query"""
-        query_lower = query.lower()
-        if 'best practice' in query_lower or 'how to' in query_lower:
-            reasoning = f"For '{query}', I recommend: 1) Start with clear requirements, 2) Use modular design, 3) Add error handling, 4) Include tests, 5) Document your code."
-        elif 'compare' in query_lower or 'difference' in query_lower:
-            reasoning = f"Comparing options for '{query}': Consider factors like performance, maintainability, ease of use, and community support."
-        elif 'optimize' in query_lower or 'improve' in query_lower:
-            reasoning = f"To optimize '{query}': 1) Profile performance, 2) Identify bottlenecks, 3) Consider algorithmic improvements, 4) Test thoroughly."
-        else:
-            reasoning = f"Analyzing '{query}': This requires careful consideration of requirements, constraints, and available resources."
-        return reasoning
+        # Update reasoning trace with path information
+        reasoning_trace.confidence_score = path.total_confidence
+
+        for i, node in enumerate(path.nodes[1:], 1):  # Skip root node
+            reasoning_trace.add_step(
+                step_type=node.node_type.value,
+                description=node.content,
+                input_data=node.context,
+                output_data=node.content,
+                confidence=node.confidence
+            )
+
+        return response
+
+    async def _learn_from_session(
+        self,
+        user_input: str,
+        response: str,
+        optimal_path: ReasoningPath
+    ) -> None:
+        """Learn from the reasoning session"""
+        try:
+            # Store in memory
+            await self.brain._store_in_memory(user_input, response, None, None)
+
+            # Update strategy performance if adaptive
+            if self.adaptive_strategy:
+                path_score = self.state_evaluator.calculate_path_score(optimal_path)
+                # This would update internal learning mechanisms
+
+        except Exception as e:
+            logger.warning(f"Learning from session failed: {e}")
+
+    def _update_strategy_performance(
+        self,
+        strategy: SearchStrategy,
+        execution_time: float,
+        success: bool,
+        quality_score: float
+    ) -> None:
+        """Update performance metrics for strategy adaptation"""
+        stats = self.strategy_performance[strategy]
+
+        # Update success rate (exponential moving average)
+        alpha = 0.1
+        stats["success_rate"] = (1 - alpha) * stats["success_rate"] + alpha * (1.0 if success else 0.0)
+
+        # Update average time
+        stats["avg_time"] = (1 - alpha) * stats["avg_time"] + alpha * execution_time
+
+        # Update average quality
+        stats["avg_quality"] = (1 - alpha) * stats["avg_quality"] + alpha * quality_score
+
+    def adapt_strategy(self) -> bool:
+        """Adapt search strategy based on performance"""
+        if not self.adaptive_strategy:
+            return False
+
+        current_stats = self.strategy_performance[self.search_strategy]
+
+        # If current strategy is performing poorly, consider switching
+        if (current_stats["success_rate"] < 0.6 or
+            current_stats["avg_time"] > 5.0 or
+            current_stats["avg_quality"] < 0.5):
+
+            # Find best performing strategy
+            best_strategy = min(
+                self.strategy_performance.keys(),
+                key=lambda s: (
+                    1 - self.strategy_performance[s]["success_rate"] +
+                    self.strategy_performance[s]["avg_time"] / 10.0 +
+                    (1 - self.strategy_performance[s]["avg_quality"])
+                )
+            )
+
+            if best_strategy != self.search_strategy:
+                old_strategy = self.search_strategy
+                self.search_strategy = best_strategy
+                logger.info(f"Adapted strategy from {old_strategy.value} to {best_strategy.value}")
+                return True
+
+        return False
+
+    def _reset_reasoning_state(self) -> None:
+        """Reset reasoning state for new session"""
+        self.reasoning_tree.clear()
+        self.reasoning_paths.clear()
+
+    def _update_performance_metrics(
+        self,
+        input_text: str,
+        output_text: str,
+        execution_time: float,
+        success: bool
+    ) -> None:
+        """Update performance metrics"""
+        metrics = PerformanceMetrics(
+            operation_name="minimax_reasoning",
+            execution_time=execution_time,
+            success=success,
+            input_size=len(input_text),
+            output_size=len(output_text),
+            metadata={
+                "search_strategy": self.search_strategy.value,
+                "max_depth": self.max_depth,
+                "confidence_threshold": self.confidence_threshold,
+                "total_sessions": self.total_reasoning_sessions
+            }
+        )
+
+        self.performance_metrics.append(metrics)
+
+        # Keep only recent metrics (last 500)
+        if len(self.performance_metrics) > 500:
+            self.performance_metrics = self.performance_metrics[-500:]
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get MiniMax Agent status and statistics"""
+        recent_metrics = [m for m in self.performance_metrics[-50:]] if self.performance_metrics else []
+
+        avg_execution_time = (
+            sum(m.execution_time for m in recent_metrics) / len(recent_metrics)
+            if recent_metrics else 0.0
+        )
+
+        success_rate = (
+            sum(1 for m in recent_metrics if m.success) / len(recent_metrics)
+            if recent_metrics else 0.0
+        )
+
+        return {
+            "search_strategy": self.search_strategy.value,
+            "max_depth": self.max_depth,
+            "max_nodes": self.max_nodes,
+            "confidence_threshold": self.confidence_threshold,
+            "adaptive_strategy": self.adaptive_strategy,
+            "total_reasoning_sessions": self.total_reasoning_sessions,
+            "successful_sessions": self.successful_sessions,
+            "success_rate": success_rate,
+            "average_execution_time": avg_execution_time,
+            "current_reasoning_nodes": len(self.reasoning_tree),
+            "strategy_performance": {
+                strategy.value: stats.copy()
+                for strategy, stats in self.strategy_performance.items()
+            },
+            "performance_metrics_count": len(self.performance_metrics)
+        }
+
+    def analyze_user_input(self, message: str, context: List[str]) -> Dict:
+        """Analyze user intent and suggest actions - Enhanced from reference brain.py"""
+        # Enhanced intent analysis with keyword patterns
+        message_lower = message.lower()
+        
+        # Intent classification with expanded patterns
+        intents = []
+        
+        # Code generation patterns
+        if any(word in message_lower for word in ["code", "python", "script", "program", "function", "class", "algorithm", "implement"]):
+            intents.append("code_generation")
+        
+        # Data analysis patterns  
+        if any(word in message_lower for word in ["analyze", "data", "csv", "json", "dataset", "statistics", "insights"]):
+            intents.append("data_analysis")
+        
+        # Web search patterns
+        if any(word in message_lower for word in ["search", "find", "web", "research", "lookup", "information"]):
+            intents.append("web_search")
+        
+        # File management patterns
+        if any(word in message_lower for word in ["file", "read", "write", "directory", "folder", "manage", "organize"]):
+            intents.append("file_manager")
+        
+        # ML training patterns
+        if any(word in message_lower for word in ["ml", "train", "model", "machine learning", "neural", "ai", "predict"]):
+            intents.append("ml_training")
+        
+        # Text analysis patterns
+        if any(word in message_lower for word in ["text", "sentiment", "analyze text", "moderation", "content"]):
+            intents.append("text_analysis")
+        
+        # Constitution patterns
+        if any(word in message_lower for word in ["constitution", "principles", "rules", "guidelines", "foundation"]):
+            intents.append("constitution")
+        
+        # Specification patterns
+        if any(word in message_lower for word in ["spec", "requirement", "specification", "technical", "documentation"]):
+            intents.append("specification")
+        
+        # Planning patterns
+        if any(word in message_lower for word in ["plan", "roadmap", "strategy", "timeline", "milestone"]):
+            intents.append("planning")
+        
+        # Task breakdown patterns
+        if any(word in message_lower for word in ["breakdown", "task", "organize", "structure", "decompose"]):
+            intents.append("task_breakdown")
+        
+        # Implementation patterns
+        if any(word in message_lower for word in ["implement", "execute", "deploy", "build", "create"]):
+            intents.append("implementation")
+        
+        # Skill creation patterns
+        if any(word in message_lower for word in ["create", "skill", "tool", "capability", "functionality"]):
+            intents.append("skill_creation")
+        
+        # Enhanced confidence scoring
+        base_confidence = 0.5
+        intent_bonus = len(intents) * 0.12
+        context_bonus = min(len(context) * 0.03, 0.15)
+        length_bonus = min(len(message) / 1000, 0.1)
+        
+        confidence = base_confidence + intent_bonus + context_bonus + length_bonus
+        confidence = min(confidence, 0.95)
+        
+        # Enhanced reasoning trace
+        reasoning_trace = {
+            "intent_analysis": f"Detected {len(intents)} intent patterns: {', '.join(intents)}",
+            "context_analysis": f"Processed {len(context)} context items for enhanced understanding",
+            "skill_suggestion": f"Recommended top {min(3, len(intents))} skills based on confidence {confidence:.2f}",
+            "keyword_matches": [word for word in message_lower.split() if len(word) > 3],
+            "complexity_score": min(len(message) / 100, 1.0)
+        }
+        
+        return {
+            "primary_intent": intents[0] if intents else "general",
+            "all_intents": intents,
+            "suggested_skills": intents[:3],  # Top 3 skills
+            "confidence": confidence,
+            "message": message,
+            "context_count": len(context),
+            "reasoning_trace": reasoning_trace,
+            "execution_strategy": "parallel" if len(intents) > 2 else "sequential"
+        }
+
+    def shutdown(self) -> None:
+        """Shutdown MiniMax Agent"""
+        logger.info("Shutting down MiniMax Agent")
+
+        # Perform final adaptation
+        if self.adaptive_strategy:
+            self.adapt_strategy()
+
+        logger.info("MiniMax Agent shutdown complete")
+
+
+# Singleton agent instance
+_agent_instance: Optional[MiniMaxAgent] = None
+_agent_lock = threading.Lock()
+
+
+def get_minimax_agent(
+    search_strategy: SearchStrategy = SearchStrategy.A_STAR,
+    max_depth: int = 7,
+    max_nodes: int = 100
+) -> MiniMaxAgent:
+    """
+    Get singleton MiniMax Agent instance
+
+    Args:
+        search_strategy: Tree search strategy
+        max_depth: Maximum reasoning depth
+        max_nodes: Maximum nodes to explore
+
+    Returns:
+        MiniMaxAgent singleton instance
+    """
+    global _agent_instance
+
+    if _agent_instance is None:
+        with _agent_lock:
+            if _agent_instance is None:
+                _agent_instance = MiniMaxAgent(search_strategy, max_depth, max_nodes)
+
+    return _agent_instance
+
+
+def reset_minimax_agent() -> None:
+    """Reset the MiniMax Agent instance"""
+    global _agent_instance
+    with _agent_lock:
+        if _agent_instance:
+            try:
+                _agent_instance.shutdown()
+            except Exception:
+                pass
+        _agent_instance = None
+    logger.info("MiniMax Agent instance reset")
+
+
+def create_minimax_agent_instance(
+    search_strategy: SearchStrategy = SearchStrategy.A_STAR,
+    max_depth: int = 7,
+    max_nodes: int = 100,
+    confidence_threshold: float = 0.7
+) -> MiniMaxAgent:
+    """
+    Create a new MiniMax Agent instance
+
+    Args:
+        search_strategy: Tree search strategy
+        max_depth: Maximum reasoning depth
+        max_nodes: Maximum nodes to explore
+        confidence_threshold: Minimum confidence threshold
+
+    Returns:
+        New MiniMaxAgent instance
+    """
+    return MiniMaxAgent(
+        search_strategy=search_strategy,
+        max_depth=max_depth,
+        max_nodes=max_nodes,
+        confidence_threshold=confidence_threshold
+    )

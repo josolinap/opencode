@@ -2101,7 +2101,12 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tests.test_framework import SkillTestCase
+try:
+    from tests.test_framework import SkillTestCase
+except ImportError:
+    class SkillTestCase:
+        def setUp(self):
+            pass
 
 
 class Test{skill.title().replace('_', '')}Skill(SkillTestCase):
@@ -2661,7 +2666,12 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tests.test_framework import SkillTestCase
+try:
+    from tests.test_framework import SkillTestCase
+except ImportError:
+    class SkillTestCase:
+        def setUp(self):
+            pass
 
 class Test{skill_class_name}(SkillTestCase):
     """Test cases for autonomously generated {skill_name} skill"""
@@ -3842,7 +3852,14 @@ class AutonomousEvolutionEngine:
     def trigger_manual_scan(self) -> List[Opportunity]:
         """Manually trigger a codebase scan"""
         logger.info("Manual scan triggered")
-        return self.scanner.scan_codebase(".")
+        opportunities = self.scanner.scan_codebase(".")
+
+        # Update metrics for manual scan
+        self.metrics.opportunities_discovered += len(opportunities)
+        self.metrics.last_scan = datetime.now()
+
+        logger.info(f"Manual scan completed: {len(opportunities)} opportunities discovered")
+        return opportunities
 
     def implement_opportunity_manual(self, opportunity: Opportunity) -> bool:
         """Manually implement a specific opportunity"""
