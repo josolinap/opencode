@@ -35,10 +35,12 @@ export const MultiEditTool = Tool.define("multiedit", {
       )
       results.push(result)
     }
+    const patchSummary = `${results.length} edits applied`
     return {
       title: path.relative(Instance.worktree, params.filePath),
       metadata: {
         results: results.map((r) => r.metadata),
+        patchSummary,
       },
       output: results.at(-1)!.output,
     }
