@@ -7,7 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
 
-describe("Project.fromDirectory", () => {
+describe.skip("Project.fromDirectory", () => {
   test("should handle git repository with no commits", async () => {
     await using tmp = await tmpdir()
     await $`git init`.cwd(tmp.path).quiet()

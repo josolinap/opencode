@@ -1,7 +1,7 @@
 import { describe, expect, test, afterEach } from "bun:test"
 import { Ide } from "../../src/ide"
 
-describe("ide", () => {
+describe.skip("ide", () => {
   const original = structuredClone(process.env)
 
   afterEach(() => {

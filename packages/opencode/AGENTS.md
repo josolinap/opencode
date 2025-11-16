@@ -36,6 +36,39 @@ The general agent automatically uses Neo-Clone for:
 
 A dedicated `neo-clone` agent is also available at `.opencode/agent/neo-clone.md` for specialized Neo-Clone usage when needed.
 
+### Skill Routing (Phase 3)
+
+Prompts are automatically routed to the most appropriate Neo-Clone skill using a priority-based registry system. The registry defines skills with descriptions, keywords, and priorities for deterministic matching. Includes override support for testing/debugging and comprehensive edge case handling.
+
+#### How It Works
+
+- **Keyword Matching**: Prompts are scanned for skill-specific keywords (single words or phrases)
+- **Priority Ordering**: Skills are checked in priority order (highest first) for deterministic routing
+- **Phrase Handling**: Multi-word keywords require all words to be present (e.g., "read file" matches "read this file")
+- **Fallback**: Unmatched prompts default to `web_search` for general questions
+
+#### Examples
+
+- "Generate Python code for a neural network" → `code_generation`
+- "Analyze the sentiment of this review" → `text_analysis`
+- "Train a model using this dataset" → `ml_training` (prioritized over `data_inspector`)
+- "Plan a multi-step workflow" → `minimax_agent`
+- "Read this file and summarize" → `file_manager`
+- "What is the weather?" → `web_search` (fallback)
+
+#### Maintenance Guide
+
+- **Adding Skills**: Edit `SKILL_REGISTRY` in `src/agent/skill-registry.ts` with name, description, keywords, and priority
+- **Adjusting Priorities**: Higher numbers = higher priority; reorder if conflicts arise
+- **Keyword Tuning**: Use specific terms to avoid false positives; test with `bun test test/skill-routing.test.ts`
+- **Override for Testing**: Use `routePromptToSkill(prompt, "desired_skill")` in code for manual routing
+
+- **Registry Location**: `src/agent/skill-registry.ts`
+- **Routing Logic**: `src/agent/skill-router.ts` uses the registry for keyword-based matching
+- **Override**: Optional `overrideSkill` parameter for forced routing; or set `OPENCODE_FORCE_SKILL` env var
+- **Fallback**: Generic prompts default to `web_search`
+- **Safety**: Handles empty/null prompts, multiple cues (highest priority wins)
+
 ### Tool Parameters
 
 - `message`: The query or message to send to Neo-Clone
@@ -64,6 +97,8 @@ A dedicated `neo-clone` agent is also available at `.opencode/agent/neo-clone.md
 - **Tools**: Implement `Tool.Info` interface with `execute()` method
 - **Context**: Pass `sessionID` in tool context, use `App.provide()` for DI
 - **Validation**: All inputs validated with Zod schemas
-- **Logging**: Use `Log.create({ service: "name" })` pattern
-- **Storage**: Use `Storage` namespace for persistence
-- **API Client**: Go TUI communicates with TypeScript server via stainless SDK. When adding/modifying server endpoints in `packages/opencode/src/server/server.ts`, ask the user to generate a new client SDK to proceed with client-side changes.
+- - **Logging**: Use `Log.create({ service: "name" })` pattern
+- - **Storage**: Use `Storage` namespace for persistence
+- - **API Client**: Go TUI communicates with TypeScript server via stainless SDK. When adding/modifying server endpoints in `packages/opencode/src/server/server.ts`, ask the user to generate a new client SDK to proceed with client-side changes.
+
+* **_ Note: The following is a test note; the rest of the file would be extended accordingly._**

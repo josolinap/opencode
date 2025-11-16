@@ -3,7 +3,7 @@ import { cmd } from "./cmd"
 
 export const ServeCommand = cmd({
   command: "serve",
-  builder: (yargs) =>
+  builder: (yargs: any) =>
     yargs
       .option("port", {
         alias: ["p"],
@@ -17,10 +17,10 @@ export const ServeCommand = cmd({
         default: "127.0.0.1",
       }),
   describe: "starts a headless opencode server",
-  handler: async (args) => {
+  handler: async (args: any) => {
     const hostname = args.hostname
     const port = args.port
-    const server = Server.listen({
+    const server = await Server.listen({
       port,
       hostname,
     })

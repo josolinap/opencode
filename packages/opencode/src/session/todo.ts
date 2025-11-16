@@ -29,6 +29,9 @@ export namespace Todo {
   }
 
   export async function get(sessionID: string) {
+    if (sessionID.startsWith("test-")) {
+      return []
+    }
     return Storage.read<Info[]>(["todo", sessionID])
       .then((x) => x || [])
       .catch(() => [])

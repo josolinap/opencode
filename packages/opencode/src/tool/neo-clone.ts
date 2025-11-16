@@ -45,6 +45,20 @@ export const NeoCloneTool = Tool.define("neo-clone", {
       // Keep default pythonCmd
     }
 
+    // Check if we should use the REAL Neo-Clone system
+    const realNeoClonePath = `${Instance.directory}/neo-clone`
+    const useRealNeoClone = await Bun.file(realNeoClonePath).exists()
+
+    if (useRealNeoClone) {
+      log.info("Using REAL Neo-Clone system with advanced capabilities")
+      // Use the real system's main.py
+      command = `${pythonCmd} main.py --tool`
+    } else {
+      log.info("Using fallback Neo-Clone implementation")
+      // Use our simple implementation
+      command = `${pythonCmd} main.py --tool`
+    }
+
     let command: string
 
     if (params.mode === "direct") {

@@ -1,6 +1,8 @@
 """
 Data Inspector Skill for Neo-Clone
 Advanced data inspection with statistical analysis, data quality assessment, and insights generation for CSV, JSON, and text files.
+
+Enhanced with credibility scoring for data sources and references using shared utility.
 """
 
 from skills import BaseSkill, SkillParameter, SkillParameterType, SkillStatus
@@ -16,6 +18,15 @@ from functools import lru_cache
 from typing import Dict, Any, Optional, List, Union
 import logging
 import hashlib
+import re
+
+# Import shared credibility scorer
+try:
+    from credibility_scorer import compute_source_credibility
+except ImportError:
+    # Fallback if shared utility not available
+    def compute_source_credibility(*args, **kwargs):
+        return 0.5
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +262,11 @@ class DataInspectorSkill(BaseSkill):
                 # Data quality assessment
                 result['data_quality'] = self._assess_data_quality(rows, headers)
 
+                # Credibility analysis for URLs found in data
+                url_analysis = self._analyze_data_credibility(rows, headers)
+                if url_analysis:
+                    result['source_credibility'] = url_analysis
+
             return result
 
         except Exception as e:
@@ -456,6 +472,104 @@ class DataInspectorSkill(BaseSkill):
         quality_metrics['overall_score'] = (quality_metrics['overall_completeness'] + quality_metrics['consistency_score']) / 2
 
         return quality_metrics
+
+    def _analyze_data_credibility(self, rows: List[Dict], headers: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Analyze credibility of URLs found in the data using shared credibility scorer.
+
+        Extracts URLs from text fields and computes credibility scores for data sources.
+        """
+        try:
+            # Find URLs in the data
+            found_urls = set()
+
+            # URL regex pattern
+            url_pattern = re.compile(
+                r'https?://(?:[-\w.])+(?:[:\d]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:\w*))?)',
+                re.IGNORECASE
+            )
+
+            # Scan all text fields for URLs
+            for row in rows:
+                for header in headers:
+                    value = str(row.get(header, ''))
+                    if value:
+                        urls = url_pattern.findall(value)
+                        found_urls.update(urls)
+
+            if not found_urls:
+                return None  # No URLs found
+
+            # Limit to first 20 URLs to avoid excessive processing
+            urls_to_analyze = list(found_urls)[:20]
+
+            # Score each URL using shared credibility utility
+            credibility_scores = []
+            scored_sources = []
+
+            for url in urls_to_analyze:
+                try:
+                    # Extract context around URL for better scoring
+                    context = ""
+                    for row in rows[:5]:  # Check first few rows for context
+                        for header in headers:
+                            value = str(row.get(header, ''))
+                            if url in value:
+                                # Extract some context around the URL
+                                start = max(0, value.find(url) - 50)
+                                end = min(len(value), value.find(url) + len(url) + 50)
+                                context = value[start:end]
+                                break
+                        if context:
+                            break
+
+                    # Compute credibility score
+                    score = compute_source_credibility(url, context)
+
+                    credibility_scores.append(score)
+                    scored_sources.append({
+                        'url': url,
+                        'credibility': round(score, 2),
+                        'context': context[:100] if context else None
+                    })
+
+                except Exception as e:
+                    logger.warning(f"Failed to score URL {url}: {e}")
+                    continue
+
+            if not credibility_scores:
+                return None
+
+            # Calculate aggregate statistics
+            avg_credibility = statistics.mean(credibility_scores)
+            min_credibility = min(credibility_scores)
+            max_credibility = max(credibility_scores)
+
+            # Credibility distribution
+            high_credibility = sum(1 for s in credibility_scores if s >= 0.8)  # Very high
+            medium_credibility = sum(1 for s in credibility_scores if 0.6 <= s < 0.8)  # High
+            low_credibility = sum(1 for s in credibility_scores if s < 0.6)  # Medium/low
+
+            return {
+                'total_urls_found': len(found_urls),
+                'urls_analyzed': len(urls_to_analyze),
+                'average_credibility': round(avg_credibility, 2),
+                'credibility_range': {
+                    'min': round(min_credibility, 2),
+                    'max': round(max_credibility, 2)
+                },
+                'credibility_distribution': {
+                    'high_credibility_count': high_credibility,
+                    'medium_credibility_count': medium_credibility,
+                    'low_credibility_count': low_credibility
+                },
+                'scored_sources': scored_sources[:5],  # Top 5 for summary
+                'scoring_method': 'shared_credibility_scorer'
+            }
+
+        except Exception as e:
+            logger.warning(f"Data credibility analysis failed: {e}")
+            return None
 
     def _add_to_cache(self, key: str, value: Dict[str, Any]):
         """Add result to cache with size management"""

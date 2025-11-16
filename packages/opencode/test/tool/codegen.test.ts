@@ -3,10 +3,8 @@ import { test, expect } from "bun:test"
 
 test("codegen with explanation", async () => {
   const ctx = { sessionID: "s", messageID: "m", abort: new AbortController().signal } as any
-  const res = await CodeGenTool.execute(
-    { prompt: "Make a hello world in JS", language: "JavaScript", explain: true },
-    ctx,
-  )
+  const tool = await CodeGenTool.init()
+  const res = await tool.execute({ prompt: "Make a hello world in JS", language: "JavaScript", explain: true }, ctx)
   expect(res).toBeDefined()
   expect(res.metadata).toBeDefined()
   expect(res.metadata.language).toBe("JavaScript")
@@ -17,10 +15,8 @@ test("codegen with explanation", async () => {
 
 test("codegen without explanation", async () => {
   const ctx = { sessionID: "s", messageID: "m", abort: new AbortController().signal } as any
-  const res = await CodeGenTool.execute(
-    { prompt: "Make a hello world in Python", language: "Python", explain: false },
-    ctx,
-  )
+  const tool = await CodeGenTool.init()
+  const res = await tool.execute({ prompt: "Make a hello world in Python", language: "Python", explain: false }, ctx)
   expect(res).toBeDefined()
   expect(res.metadata.explanation).toBeUndefined()
 })

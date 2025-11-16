@@ -8,6 +8,8 @@ const flags: Record<string, FlagValue> = {
   // MVP flag for the Web Search enhancements (structured results, credibility, caching, etc.)
   // Default to false to preserve existing behavior unless explicitly enabled.
   "web_search_mvp.enabled": false,
+  // Autonomous continuation (ATC) flag for brain-driven task progression
+  "autonomy.continue.enabled": false,
 }
 
 export function isWebSearchMVPEnabled(): boolean {
@@ -21,4 +23,16 @@ export function setWebSearchMVPEnabled(value: boolean): void {
 // Expose a tiny API to toggle for tests or scripted canary runs
 export function toggleWebSearchMVPForTest(enable: boolean): void {
   setWebSearchMVPEnabled(enable)
+}
+
+export function isAutonomyContinueEnabled(): boolean {
+  return !!flags["autonomy.continue.enabled"]
+}
+
+export function setAutonomyContinueEnabled(value: boolean): void {
+  flags["autonomy.continue.enabled"] = value
+}
+
+export function toggleAutonomyForTest(enable: boolean): void {
+  setAutonomyContinueEnabled(enable)
 }

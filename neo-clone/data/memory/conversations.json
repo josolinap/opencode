@@ -43,5 +43,38 @@
     "intent": "user_input",
     "skill_used": null,
     "metadata": null
+  },
+  {
+    "id": "775da5420a6e4b9a83065296d1e32566",
+    "session_id": "session_20251116_124903_55a0eaf2",
+    "timestamp": "2025-11-16T12:49:07.384117",
+    "user_input": "hi",
+    "assistant_response": "",
+    "intent": "user_input",
+    "skill_used": null,
+    "metadata": {}
+  },
+  {
+    "id": "7c736d78b1524630830d4f096f029c8e",
+    "session_id": "session_20251116_124903_55a0eaf2",
+    "timestamp": "2025-11-16T12:49:07.387199",
+    "user_input": "hi",
+    "assistant_response": "I have completed the reasoning process with 0.00 confidence.",
+    "intent": null,
+    "skill_used": null,
+    "metadata": {
+      "confidence": 0.0,
+      "success": false
+    }
+  },
+  {
+    "id": "e9a6c7d8845143fb87cf3b5ce0c56c9b",
+    "session_id": "session_20251116_124903_55a0eaf2",
+    "timestamp": "2025-11-16T12:49:07.389201",
+    "user_input": "hi",
+    "assistant_response": "I have completed the reasoning process with 0.00 confidence.",
+    "intent": "chat",
+    "skill_used": null,
+    "metadata": {}
   }
 ]

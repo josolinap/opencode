@@ -103,6 +103,19 @@
       ],
       "cost": "free",
       "response_time": 1.349531888961792
-    }
+  },
+  "minimax/m2": {
+    "provider": "minimax",
+    "model": "m2",
+    "endpoint": "https://api.minimax.chat/v1",
+    "context_length": 128000,
+    "capabilities": [
+      "reasoning",
+      "tool_calling",
+      "temperature"
+    ],
+    "cost": "free",
+    "response_time": 1.25
   }
+}
 }

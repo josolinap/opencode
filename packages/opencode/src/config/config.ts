@@ -506,6 +506,16 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration, see https://opencode.ai/docs/agent"),
+      skillRouting: z
+        .object({
+          disabledSkills: z.array(z.string()).optional().describe("List of skills to disable from routing"),
+          customPriorities: z
+            .record(z.string(), z.number())
+            .optional()
+            .describe("Custom priority overrides for skills"),
+        })
+        .optional()
+        .describe("Neo-Clone skill routing preferences"),
       provider: z
         .record(
           z.string(),
@@ -596,6 +606,49 @@ export namespace Config {
         })
         .optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
+      autoContinuation: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe("Enable auto-continuation for autonomous task execution"),
+          maxAutonomousTasks: z
+            .number()
+            .int()
+            .min(1)
+            .max(50)
+            .optional()
+            .default(10)
+            .describe("Maximum number of autonomous tasks per session"),
+          confidenceThreshold: z
+            .number()
+            .min(0)
+            .max(1)
+            .optional()
+            .default(0.7)
+            .describe("Minimum confidence threshold for autonomous actions"),
+          safetyLevel: z
+            .enum(["conservative", "moderate", "permissive"])
+            .optional()
+            .default("moderate")
+            .describe("Safety level for autonomous operations"),
+          maxDepth: z
+            .number()
+            .int()
+            .min(1)
+            .max(10)
+            .optional()
+            .default(3)
+            .describe("Maximum recursion depth for auto-continuation"),
+          requireApproval: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe("Require user approval for autonomous operations"),
+        })
+        .optional()
+        .describe("Auto-continuation settings for autonomous task execution"),
       experimental: z
         .object({
           hook: z

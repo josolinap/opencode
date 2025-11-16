@@ -6,7 +6,7 @@ import { upgrade } from "@/cli/upgrade"
 
 export const TuiSpawnCommand = cmd({
   command: "spawn [project]",
-  builder: (yargs) =>
+  builder: (yargs: any) =>
     yargs
       .positional("project", {
         type: "string",
@@ -22,26 +22,24 @@ export const TuiSpawnCommand = cmd({
         describe: "hostname to listen on",
         default: "127.0.0.1",
       }),
-  handler: async (args) => {
+  handler: async (args: any) => {
     upgrade()
-    const server = Server.listen({
+    const server = await Server.listen({
       port: args.port,
       hostname: "127.0.0.1",
     })
+
     const bin = process.execPath
     const cmd = []
     let cwd = process.cwd()
+
+    // Run the CLI directly with the attach command
+    const scriptPath = path.resolve(process.cwd(), "src/index.ts")
+    cmd.push(bin, scriptPath, "attach", server.url, "--dir", args.project ? path.resolve(args.project) : process.cwd())
+
     if (bin.endsWith("bun")) {
-      cmd.push(
-        process.execPath,
-        "run",
-        "--conditions",
-        "browser",
-        new URL("../../../index.ts", import.meta.url).pathname,
-      )
-      cwd = new URL("../../../../", import.meta.url).pathname
-    } else cmd.push(process.execPath)
-    cmd.push("attach", server.url.toString(), "--dir", args.project ? path.resolve(args.project) : process.cwd())
+      cmd.unshift("run")
+    }
     const proc = Bun.spawn({
       cmd,
       cwd,

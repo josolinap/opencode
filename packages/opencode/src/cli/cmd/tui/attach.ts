@@ -4,7 +4,7 @@ import { tui } from "./app"
 export const AttachCommand = cmd({
   command: "attach <url>",
   describe: "attach to a running opencode server",
-  builder: (yargs) =>
+  builder: (yargs: any) =>
     yargs
       .positional("url", {
         type: "string",
@@ -15,7 +15,7 @@ export const AttachCommand = cmd({
         type: "string",
         description: "directory to run in",
       }),
-  handler: async (args) => {
+  handler: async (args: any) => {
     if (args.dir) process.chdir(args.dir)
     await tui({
       url: args.url,
