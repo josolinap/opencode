@@ -36,7 +36,7 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mockTodoUpdate
 
     const positiveText = "This is absolutely amazing and wonderful! I love it so much."
-    const result: any = await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    const result: any = await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     expect(result.output).toContain("Sentiment: Positive")
     expect(result.title).toBe("Enhanced Text Analysis")
@@ -51,7 +51,7 @@ describe("tool.textanalysis autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     const existingTodos = [
-      { id: "task-1", content: "Analyze customer feedback", status: "completed", priority: "high" }
+      { id: "task-1", content: "Analyze customer feedback", status: "completed", priority: "high" },
     ]
     const mockTodoGet = mock(() => Promise.resolve(existingTodos))
     const mockTodoUpdate = mock(() => Promise.resolve())
@@ -59,7 +59,7 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mockTodoUpdate
 
     const positiveText = "This product is absolutely fantastic and amazing! I love it so much."
-    const result: any = await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    const result: any = await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     expect(result.output).toContain("Sentiment: Positive")
     expect(result.title).toBe("Enhanced Text Analysis")
@@ -76,9 +76,9 @@ describe("tool.textanalysis autopilot integration", () => {
           content: expect.stringContaining("highly positive"),
           status: "pending",
           priority: "low",
-          id: expect.stringMatching(/^auto-\d+$/)
-        })
-      ])
+          id: expect.stringMatching(/^auto-\d+$/),
+        }),
+      ]),
     })
   })
 
@@ -90,7 +90,7 @@ describe("tool.textanalysis autopilot integration", () => {
 
     // Test negative sentiment
     const negativeText = "This is absolutely terrible and horrible. I hate it so much."
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: negativeText }, ctx))
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: negativeText }, ctx))
 
     // Should suggest mitigation strategies
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -106,8 +106,9 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     // Test neutral/objective content
-    const neutralText = "The product specifications are as follows: dimensions 10x5x2 inches, weight 1.5 pounds, color options include red, blue, and green."
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: neutralText }, ctx))
+    const neutralText =
+      "The product specifications are as follows: dimensions 10x5x2 inches, weight 1.5 pounds, color options include red, blue, and green."
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: neutralText }, ctx))
 
     // Should suggest making content more engaging
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -123,8 +124,10 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     // Test long-form content (over 500 words)
-    const longText = "This is a very long piece of content. ".repeat(150) + "It contains many words and should trigger long-form analysis suggestions."
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: longText }, ctx))
+    const longText =
+      "This is a very long piece of content. ".repeat(150) +
+      "It contains many words and should trigger long-form analysis suggestions."
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: longText }, ctx))
 
     // Should suggest content organization improvements
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -141,7 +144,7 @@ describe("tool.textanalysis autopilot integration", () => {
 
     // Test Spanish content
     const spanishText = "Este producto es muy bueno y excelente. Me encanta mucho."
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: spanishText }, ctx))
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: spanishText }, ctx))
 
     // Should suggest localization strategies
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -154,18 +157,20 @@ describe("tool.textanalysis autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock existing todos at the limit (5 auto tasks)
-    const existingTodos = Array(5).fill(null).map((_, i) => ({
-      id: `auto-${i}`,
-      content: `Auto task ${i}`,
-      status: "pending",
-      priority: "low"
-    }))
+    const existingTodos = Array(5)
+      .fill(null)
+      .map((_, i) => ({
+        id: `auto-${i}`,
+        content: `Auto task ${i}`,
+        status: "pending",
+        priority: "low",
+      }))
 
     Todo.get = mock(() => Promise.resolve(existingTodos))
     Todo.update = mock(() => Promise.resolve())
 
     const positiveText = "This is amazing and wonderful!"
-    const result: any = await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    const result: any = await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     // Text analysis should still succeed
     expect(result.output).toContain("Sentiment: Positive")
@@ -184,12 +189,10 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     const positiveText = "This is absolutely fantastic and amazing!"
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     // Should have recorded autonomy telemetry
-    const autonomyCalls = mockRecord.mock.calls.filter(call =>
-      call[0].event?.startsWith("autonomy.")
-    )
+    const autonomyCalls = mockRecord.mock.calls.filter((call) => call[0].event?.startsWith("autonomy."))
 
     expect(autonomyCalls.length).toBeGreaterThan(0)
 
@@ -206,11 +209,13 @@ describe("tool.textanalysis autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock Todo operations to fail
-    Todo.get = mock(() => { throw new Error("Todo system unavailable") })
+    Todo.get = mock(() => {
+      throw new Error("Todo system unavailable")
+    })
     Todo.update = mock(() => Promise.resolve())
 
     const positiveText = "This is amazing and wonderful!"
-    const result: any = await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    const result: any = await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     // Text analysis should still succeed
     expect(result.output).toContain("Sentiment: Positive")
@@ -229,8 +234,9 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     // Execute analysis with potentially sensitive content
-    const sensitiveText = "This customer service is absolutely terrible and frustrating. I hate dealing with this company."
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: sensitiveText }, ctx))
+    const sensitiveText =
+      "This customer service is absolutely terrible and frustrating. I hate dealing with this company."
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: sensitiveText }, ctx))
 
     // Check all telemetry calls for privacy
     mockRecord.mock.calls.forEach((call: any) => {
@@ -262,7 +268,7 @@ describe("tool.textanalysis autopilot integration", () => {
     Todo.update = mockTodoUpdate
 
     const positiveText = "This is fantastic and amazing!"
-    await TextAnalysisTool.init().then(tool => tool.execute({ text: positiveText }, ctx))
+    await TextAnalysisTool.init().then((tool) => tool.execute({ text: positiveText }, ctx))
 
     // Check that the scheduled task includes proper context
     const updateCall = mockTodoUpdate.mock.calls[0][0]

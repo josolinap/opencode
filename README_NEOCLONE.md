@@ -7,12 +7,14 @@ Neo-Clone is a comprehensive AI-powered development platform that autonomously p
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
+
 ```bash
 cd packages/opencode
 bun install
 ```
 
 ### 2. Start the Server
+
 ```bash
 # Development mode with hot reload
 bun run server:dev
@@ -22,9 +24,11 @@ bun run server
 ```
 
 ### 3. Open Dashboard
+
 Navigate to `http://localhost:3000` to access the web dashboard.
 
 ### 4. Enable Autonomy
+
 ```bash
 curl -X POST http://localhost:3000/api/autonomy/enable
 ```
@@ -32,6 +36,7 @@ curl -X POST http://localhost:3000/api/autonomy/enable
 ## 🎯 Core Features
 
 ### Intelligent Skill Routing
+
 Neo-Clone automatically routes tasks to the most appropriate specialized AI skill:
 
 ```
@@ -43,6 +48,7 @@ Neo-Clone automatically routes tasks to the most appropriate specialized AI skil
 ```
 
 ### Autonomous Task Continuation
+
 Tasks automatically progress through multiple skills for complete project execution:
 
 1. **Planning** → minimax_agent analyzes requirements
@@ -56,6 +62,7 @@ Tasks automatically progress through multiple skills for complete project execut
 ## 🛠️ Available Skills
 
 ### Core Skills
+
 - **minimax_agent** - Complex multi-step reasoning & orchestration
 - **code_generation** - Python ML code & algorithm generation
 - **text_analysis** - Sentiment analysis & content moderation
@@ -65,6 +72,7 @@ Tasks automatically progress through multiple skills for complete project execut
 - **web_search** - Information retrieval & fact-checking
 
 ### Enterprise Skills
+
 - **database_admin** - SQL optimization & schema design
 - **security_auditor** - Vulnerability scanning & compliance
 - **api_designer** - REST API design, testing & documentation
@@ -75,6 +83,7 @@ Tasks automatically progress through multiple skills for complete project execut
 ## 📡 API Endpoints
 
 ### Health & Monitoring
+
 ```bash
 GET  /health                    # System health check
 GET  /api/metrics/autonomy/health  # Autonomy system metrics
@@ -82,6 +91,7 @@ GET  /api/skills               # List available skills
 ```
 
 ### Task Execution
+
 ```bash
 POST /api/route                # Route prompt to skill
 POST /api/execute              # Execute skill with parameters
@@ -92,6 +102,7 @@ POST /api/autonomy/disable     # Disable autonomous continuation
 ### Examples
 
 #### Route a Task
+
 ```bash
 curl -X POST http://localhost:3000/api/route \
   -H "Content-Type: application/json" \
@@ -99,6 +110,7 @@ curl -X POST http://localhost:3000/api/route \
 ```
 
 #### Execute a Skill
+
 ```bash
 curl -X POST http://localhost:3000/api/execute \
   -H "Content-Type: application/json" \
@@ -114,6 +126,7 @@ curl -X POST http://localhost:3000/api/execute \
 ## 🔧 Configuration
 
 ### Environment Variables
+
 ```bash
 # Enable autonomous task continuation
 AUTONOMOUS_CONTINUE_ENABLED=true
@@ -126,6 +139,7 @@ SKILL_ROUTING_DISABLED_SKILLS='["web_search"]'
 ```
 
 ### Feature Flags
+
 - **Autonomy Control**: Enable/disable autonomous task progression
 - **Skill Customization**: Adjust routing priorities and disable skills
 - **Health Monitoring**: Real-time system performance tracking
@@ -134,6 +148,7 @@ SKILL_ROUTING_DISABLED_SKILLS='["web_search"]'
 ## 🏗️ Architecture
 
 ### System Components
+
 - **Skill Registry** - Manages 13 specialized AI skills with routing metadata
 - **Intelligent Router** - Context-aware task-to-skill assignment
 - **Autonomy Engine** - Safe task continuation with health monitoring
@@ -141,6 +156,7 @@ SKILL_ROUTING_DISABLED_SKILLS='["web_search"]'
 - **REST API** - Programmatic access to all functionality
 
 ### Safety & Reliability
+
 - **Enterprise Controls**: Production-ready safety mechanisms
 - **Health Monitoring**: Real-time system status and metrics
 - **Error Recovery**: Graceful failure handling and rollback
@@ -150,6 +166,7 @@ SKILL_ROUTING_DISABLED_SKILLS='["web_search"]'
 ## 🚀 Production Deployment
 
 ### Docker Deployment
+
 ```dockerfile
 FROM oven/bun:latest
 WORKDIR /app
@@ -161,6 +178,7 @@ CMD ["bun", "run", "server"]
 ```
 
 ### Kubernetes
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -177,16 +195,17 @@ spec:
         app: neo-clone
     spec:
       containers:
-      - name: neo-clone
-        image: neo-clone:latest
-        ports:
-        - containerPort: 3000
-        env:
-        - name: AUTONOMOUS_CONTINUE_ENABLED
-          value: "true"
+        - name: neo-clone
+          image: neo-clone:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: AUTONOMOUS_CONTINUE_ENABLED
+              value: "true"
 ```
 
 ### Load Balancing
+
 - **Horizontal Scaling**: Multiple instances behind load balancer
 - **Session Affinity**: Route related tasks to same instance
 - **Health Checks**: Automatic instance health monitoring
@@ -195,12 +214,14 @@ spec:
 ## 📊 Monitoring & Analytics
 
 ### Dashboard Metrics
+
 - **Task Completion Rates**: Success rates by skill and complexity
 - **Routing Accuracy**: Percentage of correct skill assignments
 - **System Health**: Real-time performance and error rates
 - **User Adoption**: Feature usage and satisfaction metrics
 
 ### Logging & Observability
+
 - **Structured Logging**: JSON-formatted logs with context
 - **Distributed Tracing**: End-to-end request tracking
 - **Metrics Collection**: Prometheus-compatible metrics
@@ -209,12 +230,14 @@ spec:
 ## 🔒 Security & Compliance
 
 ### Enterprise Security
+
 - **Input Validation**: Comprehensive parameter validation
 - **Rate Limiting**: DDoS protection and resource management
 - **Audit Logging**: Complete user action tracking
 - **Data Privacy**: No sensitive data storage or transmission
 
 ### Compliance Features
+
 - **GDPR Compliance**: Data handling and user consent
 - **OWASP Standards**: Security best practices implementation
 - **Access Controls**: Role-based permissions and authentication
@@ -223,16 +246,19 @@ spec:
 ## 🎯 Use Cases
 
 ### Individual Developer
+
 - **Code Assistance**: Intelligent code generation and optimization
 - **Learning Support**: Skill-based learning and improvement
 - **Productivity Boost**: Automated routine tasks and documentation
 
 ### Development Teams
+
 - **Standardization**: Consistent code quality and practices
 - **Knowledge Sharing**: Automated documentation and best practices
 - **Quality Assurance**: Comprehensive testing and security scanning
 
 ### Enterprise Organizations
+
 - **Scalable Development**: Handle complex projects autonomously
 - **Compliance Automation**: Security and regulatory requirements
 - **Knowledge Management**: Institutional knowledge preservation
@@ -240,6 +266,7 @@ spec:
 ## 🔮 Future Roadmap
 
 ### Advanced Features
+
 - **Multi-Agent Collaboration**: Skills working together on complex tasks
 - **Learning Algorithms**: Self-improving routing based on user feedback
 - **Industry Specializations**: Domain-specific skills and knowledge
@@ -247,6 +274,7 @@ spec:
 - **IDE Integration**: Direct VS Code and other editor integration
 
 ### Ecosystem Expansion
+
 - **Plugin System**: Third-party skill development
 - **API Marketplace**: Share and discover custom skills
 - **Integration Hub**: Connect with popular development tools
@@ -265,6 +293,7 @@ spec:
 We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ### Development Setup
+
 ```bash
 git clone https://github.com/your-org/neo-clone.git
 cd neo-clone/packages/opencode
@@ -273,6 +302,7 @@ bun run server:dev
 ```
 
 ### Adding New Skills
+
 1. Create skill implementation in `src/tool/`
 2. Add to skill registry in `src/agent/skill-registry.ts`
 3. Update routing logic if needed

@@ -113,9 +113,7 @@ async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
 function TuiRoot(props: { url: string; args: Args; onExit: () => Promise<void>; mode: "dark" | "light" }) {
   return (
     // @ts-ignore - ErrorBoundary typing issue
-    <ErrorBoundary
-      fallback={(error, reset) => <ErrorComponent error={error} reset={reset} onExit={props.onExit} />}
-    >
+    <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} onExit={props.onExit} />}>
       <ArgsProvider {...props.args}>
         <ExitProvider onExit={props.onExit}>
           <KVProvider>
@@ -162,17 +160,14 @@ export function tui(input: { url: string; args: Args; onExit?: () => Promise<voi
     console.log("Starting render...")
     try {
       // @ts-ignore - SolidJS component typing issues
-      render(
-        () => <TuiRoot url={input.url} args={input.args} onExit={onExit} mode={mode} />,
-        {
-          targetFps: 10,
-          gatherStats: false,
-          exitOnCtrlC: false,
-          useAlternateScreen: true,
-          useConsole: false,
-          useKittyKeyboard: false,
-        },
-      )
+      render(() => <TuiRoot url={input.url} args={input.args} onExit={onExit} mode={mode} />, {
+        targetFps: 10,
+        gatherStats: false,
+        exitOnCtrlC: false,
+        useAlternateScreen: true,
+        useConsole: false,
+        useKittyKeyboard: false,
+      })
       console.log("Render completed successfully")
     } catch (error) {
       console.error("Render failed:", error)

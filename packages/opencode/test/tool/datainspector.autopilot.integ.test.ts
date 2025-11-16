@@ -33,7 +33,7 @@ describe("tool.datainspector autopilot integration", () => {
     Todo.update = mockTodoUpdate
 
     const csvData = "name,age,city\nJohn,25,NYC\nJane,30,LA\n"
-    const result: any = await DataInspectorTool.init().then(tool => tool.execute({ data: csvData }, ctx))
+    const result: any = await DataInspectorTool.init().then((tool) => tool.execute({ data: csvData }, ctx))
 
     expect(result.output).toContain("Rows: 2")
     expect(result.title).toBe("Data Inspector")
@@ -46,16 +46,14 @@ describe("tool.datainspector autopilot integration", () => {
   test("autonomy enabled: data inspector schedules next task after analysis", async () => {
     setAutonomyContinueEnabled(true)
 
-    const existingTodos = [
-      { id: "task-1", content: "Analyze dataset", status: "completed", priority: "high" }
-    ]
+    const existingTodos = [{ id: "task-1", content: "Analyze dataset", status: "completed", priority: "high" }]
     const mockTodoGet = mock(() => Promise.resolve(existingTodos))
     const mockTodoUpdate = mock(() => Promise.resolve())
     Todo.get = mockTodoGet
     Todo.update = mockTodoUpdate
 
     const csvData = "product,price,rating\nWidget,19.99,4.5\nGadget,29.99,4.2\n"
-    const result: any = await DataInspectorTool.init().then(tool => tool.execute({ data: csvData }, ctx))
+    const result: any = await DataInspectorTool.init().then((tool) => tool.execute({ data: csvData }, ctx))
 
     expect(result.output).toContain("Rows: 2")
     expect(result.title).toBe("Data Inspector")
@@ -72,9 +70,9 @@ describe("tool.datainspector autopilot integration", () => {
           content: expect.stringContaining("Explore relationships between key columns"),
           status: "pending",
           priority: "low",
-          id: expect.stringMatching(/^auto-\d+$/)
-        })
-      ])
+          id: expect.stringMatching(/^auto-\d+$/),
+        }),
+      ]),
     })
   })
 
@@ -86,7 +84,7 @@ describe("tool.datainspector autopilot integration", () => {
 
     // Test high missing data scenario
     const csvWithMissingData = "col1,col2,col3\nval1,,\n,val2,\n,," // 67% missing
-    await DataInspectorTool.init().then(tool => tool.execute({ data: csvWithMissingData }, ctx))
+    await DataInspectorTool.init().then((tool) => tool.execute({ data: csvWithMissingData }, ctx))
 
     // Should suggest data cleaning strategies
     const updateCall = Todo.update.mock.calls[0][0]
@@ -102,7 +100,7 @@ describe("tool.datainspector autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     const jsonData = '[{"score": 85, "grade": "A"}, {"score": 92, "grade": "A"}, {"score": 78, "grade": "B"}]'
-    await DataInspectorTool.init().then(tool => tool.execute({ data: jsonData, format: "json" }, ctx))
+    await DataInspectorTool.init().then((tool) => tool.execute({ data: jsonData, format: "json" }, ctx))
 
     // Should suggest numeric field analysis
     const updateCall = Todo.update.mock.calls[0][0]
@@ -117,7 +115,7 @@ describe("tool.datainspector autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     const invalidData = '{"invalid": json syntax}' // Invalid JSON
-    await DataInspectorTool.init().then(tool => tool.execute({ data: invalidData, format: "json" }, ctx))
+    await DataInspectorTool.init().then((tool) => tool.execute({ data: invalidData, format: "json" }, ctx))
 
     // Should suggest investigating parsing errors
     const updateCall = Todo.update.mock.calls[0][0]
@@ -130,18 +128,20 @@ describe("tool.datainspector autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock existing todos at the limit (5 auto tasks)
-    const existingTodos = Array(5).fill(null).map((_, i) => ({
-      id: `auto-${i}`,
-      content: `Auto task ${i}`,
-      status: "pending",
-      priority: "low"
-    }))
+    const existingTodos = Array(5)
+      .fill(null)
+      .map((_, i) => ({
+        id: `auto-${i}`,
+        content: `Auto task ${i}`,
+        status: "pending",
+        priority: "low",
+      }))
 
     Todo.get = mock(() => Promise.resolve(existingTodos))
     Todo.update = mock(() => Promise.resolve())
 
     const csvData = "name,value\nTest,123\n"
-    const result: any = await DataInspectorTool.init().then(tool => tool.execute({ data: csvData }, ctx))
+    const result: any = await DataInspectorTool.init().then((tool) => tool.execute({ data: csvData }, ctx))
 
     // Data inspection should still succeed
     expect(result.output).toContain("Rows: 1")
@@ -160,12 +160,10 @@ describe("tool.datainspector autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     const csvData = "category,sales\nA,100\nB,200\n"
-    await DataInspectorTool.init().then(tool => tool.execute({ data: csvData }, ctx))
+    await DataInspectorTool.init().then((tool) => tool.execute({ data: csvData }, ctx))
 
     // Should have recorded autonomy telemetry
-    const autonomyCalls = mockRecord.mock.calls.filter(call =>
-      call[0].event?.startsWith("autonomy.")
-    )
+    const autonomyCalls = mockRecord.mock.calls.filter((call) => call[0].event?.startsWith("autonomy."))
 
     expect(autonomyCalls.length).toBeGreaterThan(0)
 
@@ -182,11 +180,13 @@ describe("tool.datainspector autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock Todo operations to fail
-    Todo.get = mock(() => { throw new Error("Todo system unavailable") })
+    Todo.get = mock(() => {
+      throw new Error("Todo system unavailable")
+    })
     Todo.update = mock(() => Promise.resolve())
 
     const csvData = "name,age\nJohn,25\nJane,30\n"
-    const result: any = await DataInspectorTool.init().then(tool => tool.execute({ data: csvData }, ctx))
+    const result: any = await DataInspectorTool.init().then((tool) => tool.execute({ data: csvData }, ctx))
 
     // Data inspection should still succeed
     expect(result.output).toContain("Rows: 2")
@@ -207,10 +207,10 @@ describe("tool.datainspector autopilot integration", () => {
 
     // Use data that might contain sensitive information
     const sensitiveData = "ssn,name,salary\n123-45-6789,John Doe,75000\n987-65-4321,Jane Smith,80000\n"
-    await DataInspectorTool.init().then(tool => tool.execute({ data: sensitiveData }, ctx))
+    await DataInspectorTool.init().then((tool) => tool.execute({ data: sensitiveData }, ctx))
 
     // Check all telemetry calls for privacy
-    mockRecord.mock.calls.forEach(call => {
+    mockRecord.mock.calls.forEach((call) => {
       const event = call[0]
 
       // Should not contain raw data or sensitive content

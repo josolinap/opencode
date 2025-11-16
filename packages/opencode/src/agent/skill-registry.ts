@@ -48,7 +48,14 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
   {
     name: "text_analysis",
     description: "Advanced sentiment analysis, language detection, and content moderation with multi-language support",
-    keywords: ["sentiment", "analyze.*sentiment", "tone analysis", "content moderation", "emotion detection", "feeling analysis"],
+    keywords: [
+      "sentiment",
+      "analyze.*sentiment",
+      "tone analysis",
+      "content moderation",
+      "emotion detection",
+      "feeling analysis",
+    ],
     priority: 8,
   },
   {

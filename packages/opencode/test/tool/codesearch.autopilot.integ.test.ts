@@ -16,7 +16,8 @@ const ctx = {
 // Mock external code search API
 const mockCodeResponse = {
   ok: true,
-  text: async () => 'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Sample React useState code example"}]}}',
+  text: async () =>
+    'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Sample React useState code example"}]}}',
 }
 
 // Mock fetch for code search
@@ -50,7 +51,9 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.get = mockTodoGet
     Todo.update = mockTodoUpdate
 
-    const result: any = await CodeSearchTool.init().then(tool => tool.execute({ query: "React useState examples", tokensNum: 5000 }, ctx))
+    const result: any = await CodeSearchTool.init().then((tool) =>
+      tool.execute({ query: "React useState examples", tokensNum: 5000 }, ctx),
+    )
 
     expect(result.output).toContain("Sample React useState code")
     expect(result.title).toContain("Code search: React useState examples")
@@ -65,14 +68,16 @@ describe("tool.codesearch autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     const existingTodos = [
-      { id: "task-1", content: "Search for React patterns", status: "completed", priority: "high" }
+      { id: "task-1", content: "Search for React patterns", status: "completed", priority: "high" },
     ]
     const mockTodoGet = mock(() => Promise.resolve(existingTodos))
     const mockTodoUpdate = mock(() => Promise.resolve())
     Todo.get = mockTodoGet
     Todo.update = mockTodoUpdate
 
-    const result: any = await CodeSearchTool.init().then(tool => tool.execute({ query: "React useState examples", tokensNum: 5000 }, ctx))
+    const result: any = await CodeSearchTool.init().then((tool) =>
+      tool.execute({ query: "React useState examples", tokensNum: 5000 }, ctx),
+    )
 
     expect(result.output).toContain("Sample React useState code")
     expect(result.title).toContain("Code search: React useState examples")
@@ -90,9 +95,9 @@ describe("tool.codesearch autopilot integration", () => {
           content: expect.stringContaining("design pattern improvements"),
           status: "pending",
           priority: "low",
-          id: expect.stringMatching(/^auto-\d+$/)
-        })
-      ])
+          id: expect.stringMatching(/^auto-\d+$/),
+        }),
+      ]),
     })
   })
 
@@ -103,7 +108,7 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     // Test error handling query
-    await CodeSearchTool.init().then(tool => tool.execute({ query: "error handling patterns", tokensNum: 5000 }, ctx))
+    await CodeSearchTool.init().then((tool) => tool.execute({ query: "error handling patterns", tokensNum: 5000 }, ctx))
 
     // Should suggest error handling improvements
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -118,7 +123,8 @@ describe("tool.codesearch autopilot integration", () => {
     // Mock response with async/await patterns
     const asyncMockResponse = {
       ok: true,
-      text: async () => 'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"async function example() { await fetchData(); }"}]}}',
+      text: async () =>
+        'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"async function example() { await fetchData(); }"}]}}',
     }
 
     // @ts-ignore
@@ -127,7 +133,7 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.get = mock(() => Promise.resolve([]))
     Todo.update = mock(() => Promise.resolve())
 
-    await CodeSearchTool.init().then(tool => tool.execute({ query: "async patterns", tokensNum: 5000 }, ctx))
+    await CodeSearchTool.init().then((tool) => tool.execute({ query: "async patterns", tokensNum: 5000 }, ctx))
 
     // Should suggest concurrency improvements
     const updateCall = (Todo.update as any).mock.calls[0][0]
@@ -140,17 +146,21 @@ describe("tool.codesearch autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock existing todos at the limit (5 auto tasks)
-    const existingTodos = Array(5).fill(null).map((_, i) => ({
-      id: `auto-${i}`,
-      content: `Auto task ${i}`,
-      status: "pending",
-      priority: "low"
-    }))
+    const existingTodos = Array(5)
+      .fill(null)
+      .map((_, i) => ({
+        id: `auto-${i}`,
+        content: `Auto task ${i}`,
+        status: "pending",
+        priority: "low",
+      }))
 
     Todo.get = mock(() => Promise.resolve(existingTodos))
     Todo.update = mock(() => Promise.resolve())
 
-    const result: any = await CodeSearchTool.init().then(tool => tool.execute({ query: "test query", tokensNum: 5000 }, ctx))
+    const result: any = await CodeSearchTool.init().then((tool) =>
+      tool.execute({ query: "test query", tokensNum: 5000 }, ctx),
+    )
 
     // Code search should still succeed
     expect(result.output).toContain("Sample React useState code")
@@ -169,12 +179,10 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.get = mock(() => Promise.resolve([]))
     Todo.update = mock(() => Promise.resolve())
 
-    await CodeSearchTool.init().then(tool => tool.execute({ query: "React patterns", tokensNum: 5000 }, ctx))
+    await CodeSearchTool.init().then((tool) => tool.execute({ query: "React patterns", tokensNum: 5000 }, ctx))
 
     // Should have recorded autonomy telemetry
-    const autonomyCalls = mockRecord.mock.calls.filter(call =>
-      call[0].event?.startsWith("autonomy.")
-    )
+    const autonomyCalls = mockRecord.mock.calls.filter((call) => call[0].event?.startsWith("autonomy."))
 
     expect(autonomyCalls.length).toBeGreaterThan(0)
 
@@ -191,10 +199,14 @@ describe("tool.codesearch autopilot integration", () => {
     setAutonomyContinueEnabled(true)
 
     // Mock Todo operations to fail
-    Todo.get = mock(() => { throw new Error("Todo system unavailable") })
+    Todo.get = mock(() => {
+      throw new Error("Todo system unavailable")
+    })
     Todo.update = mock(() => Promise.resolve())
 
-    const result: any = await CodeSearchTool.init().then(tool => tool.execute({ query: "test query", tokensNum: 5000 }, ctx))
+    const result: any = await CodeSearchTool.init().then((tool) =>
+      tool.execute({ query: "test query", tokensNum: 5000 }, ctx),
+    )
 
     // Code search should still succeed
     expect(result.output).toContain("Sample React useState code")
@@ -214,7 +226,9 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.update = mock(() => Promise.resolve())
 
     // Execute search with potentially sensitive query
-    await CodeSearchTool.init().then(tool => tool.execute({ query: "private API key handling", tokensNum: 5000 }, ctx))
+    await CodeSearchTool.init().then((tool) =>
+      tool.execute({ query: "private API key handling", tokensNum: 5000 }, ctx),
+    )
 
     // Check all telemetry calls for privacy
     mockRecord.mock.calls.forEach((call: any) => {
@@ -245,7 +259,7 @@ describe("tool.codesearch autopilot integration", () => {
     Todo.get = mock(() => Promise.resolve([]))
     Todo.update = mockTodoUpdate
 
-    await CodeSearchTool.init().then(tool => tool.execute({ query: "test query", tokensNum: 5000 }, ctx))
+    await CodeSearchTool.init().then((tool) => tool.execute({ query: "test query", tokensNum: 5000 }, ctx))
 
     // Check that the scheduled task includes proper context
     const updateCall = mockTodoUpdate.mock.calls[0][0]

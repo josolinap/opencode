@@ -58,9 +58,7 @@ describe("tool.websearch autopilot integration", () => {
     setAutonomyContinueEnabled(true)
     setWebSearchMVPEnabled(true)
 
-    const existingTodos = [
-      { id: "task-1", content: "Initial task", status: "completed", priority: "high" }
-    ]
+    const existingTodos = [{ id: "task-1", content: "Initial task", status: "completed", priority: "high" }]
     const mockTodoGet = mock(() => Promise.resolve(existingTodos))
     const mockTodoUpdate = mock(() => Promise.resolve())
     Todo.get = mockTodoGet
@@ -83,9 +81,9 @@ describe("tool.websearch autopilot integration", () => {
           content: expect.stringContaining("Auto continuation"),
           status: "pending",
           priority: "low",
-          id: expect.stringMatching(/^auto-\d+$/)
-        })
-      ])
+          id: expect.stringMatching(/^auto-\d+$/),
+        }),
+      ]),
     })
   })
 
@@ -103,9 +101,7 @@ describe("tool.websearch autopilot integration", () => {
     await WebSearchTool.execute({ query: "test query" }, ctx)
 
     // Should have recorded autonomy telemetry
-    const autonomyCalls = mockRecord.mock.calls.filter(call =>
-      call[0].event?.startsWith("autonomy.")
-    )
+    const autonomyCalls = mockRecord.mock.calls.filter((call) => call[0].event?.startsWith("autonomy."))
 
     expect(autonomyCalls.length).toBeGreaterThan(0)
 
@@ -122,7 +118,9 @@ describe("tool.websearch autopilot integration", () => {
     setWebSearchMVPEnabled(true)
 
     // Mock Todo.get to throw error
-    Todo.get = mock(() => { throw new Error("Todo system unavailable") })
+    Todo.get = mock(() => {
+      throw new Error("Todo system unavailable")
+    })
     Todo.update = mock(() => Promise.resolve())
 
     // Web search should still succeed despite autonomy scheduling failure
@@ -148,7 +146,7 @@ describe("tool.websearch autopilot integration", () => {
     await WebSearchTool.execute({ query: "search for confidential data" }, ctx)
 
     // Check all telemetry calls for privacy
-    mockRecord.mock.calls.forEach(call => {
+    mockRecord.mock.calls.forEach((call) => {
       const event = call[0]
 
       // Should not contain raw queries or sensitive content

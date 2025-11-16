@@ -18,26 +18,31 @@ The Credibility Autopilot is a safe, auditable autonomous task continuation capa
 The ATC capability has been successfully extended to multiple Neo-Clone skills:
 
 #### Web Search (`websearch.ts`)
+
 - **Trigger**: After search results are returned
 - **Context**: Search query and results summary
 - **Follow-up**: Related searches, fact-checking, deeper analysis
 
 #### Data Inspector (`datainspector.ts`)
+
 - **Trigger**: After data analysis is complete
 - **Context**: Dataset characteristics (missing data, size, numeric fields)
 - **Follow-up**: Data cleaning, relationship analysis, quality improvements
 
 #### Code Search (`codesearch.ts`)
+
 - **Trigger**: After code search results are returned
 - **Context**: Search query and code content analysis
 - **Follow-up**: Error handling improvements, testing strategies, performance optimizations, security reviews, refactoring opportunities, concurrency improvements, database optimizations, API design enhancements
 
 #### Text Analysis (`textanalysis.ts`)
+
 - **Trigger**: After sentiment analysis is complete
 - **Context**: Sentiment scores, confidence levels, language detection, subjectivity
 - **Follow-up**: Sentiment amplification strategies, negative sentiment mitigation, content engagement improvements, long-form content organization, multilingual localization strategies
 
 #### Future Skills (Ready for Extension)
+
 - **Any Tool**: Pattern established for consistent ATC integration
 
 ### Safety Mechanisms
@@ -55,6 +60,7 @@ The ATC capability has been successfully extended to multiple Neo-Clone skills:
 ### Decision Framework
 
 Autonomous continuation is **only enabled** when:
+
 - Feature flag `autonomy.continue.enabled` is explicitly set to `true`
 - Session context is valid and complete
 - No approval requirements are triggered
@@ -81,11 +87,13 @@ All autonomy decisions are logged through the existing telemetry system:
 ### Rollback Procedures
 
 **Immediate Disable**:
+
 ```bash
 export AUTONOMOUS_CONTINUE_ENABLED=false
 ```
 
 **Selective Disable** (by session):
+
 ```bash
 # Disable for specific problematic sessions
 curl -X POST /api/sessions/{sessionId}/autonomy/disable
@@ -112,6 +120,7 @@ curl -X POST /api/sessions/{sessionId}/autonomy/disable
 #### Key Metrics to Monitor
 
 1. **Autonomy Usage**
+
    ```
    SELECT COUNT(*) as autonomy_events,
           DATE(timestamp) as day
@@ -121,6 +130,7 @@ curl -X POST /api/sessions/{sessionId}/autonomy/disable
    ```
 
 2. **Success Rates**
+
    ```
    SELECT outcome, COUNT(*) as count
    FROM telemetry_events
@@ -160,25 +170,30 @@ curl -X POST /api/sessions/{sessionId}/autonomy/disable
 ## Rollout Strategy
 
 ### Phase 1: Development (Week 1-2)
+
 - Enable in development environment only
 - Test with synthetic workloads
 - Validate telemetry and error handling
 
 ### Phase 2: Staging Canary (Week 3-4)
+
 ```bash
 export AUTONOMOUS_CONTINUE_ENABLED=true
 export AUTONOMOUS_CANARY_PERCENTAGE=5
 ```
+
 - 5% of sessions get autonomy enabled
 - Full monitoring and alerting active
 - Daily reviews of autonomy behavior
 
 ### Phase 3: Production Ramp (Week 5-8)
+
 - Gradual percentage increase: 5% → 10% → 25% → 50% → 100%
 - Automated rollback triggers based on error rates
 - Stakeholder reviews at each milestone
 
 ### Phase 4: Full Production (Week 9+)
+
 - 100% deployment with ongoing monitoring
 - Automated performance optimization
 - Continuous improvement based on telemetry
@@ -200,11 +215,13 @@ export AUTONOMOUS_CANARY_PERCENTAGE=5
 ### Recovery Procedures
 
 **Automatic Recovery**:
+
 - System automatically retries failed operations
 - Exponential backoff for transient failures
 - Circuit breaker pattern for persistent issues
 
 **Manual Intervention**:
+
 ```bash
 # Force disable autonomy for specific session
 export AUTONOMOUS_CONTINUE_BLOCKED_SESSIONS="session-123,session-456"
@@ -216,16 +233,19 @@ export AUTONOMOUS_CONTINUE_ENABLED=false
 ## Testing Strategy
 
 ### Unit Tests (`test/brain/autopilot.test.ts`)
+
 - Core autonomy logic validation
 - Feature flag integration
 - Error handling scenarios
 
 ### Integration Tests (`test/tool/websearch.autopilot.integ.test.ts`)
+
 - End-to-end autonomy flow
 - Web search + autopilot integration
 - Privacy and telemetry validation
 
 ### Privacy Tests
+
 - Verify no PII in telemetry streams
 - Validate hashing mechanisms
 - Check data anonymization
@@ -241,11 +261,13 @@ export AUTONOMOUS_CONTINUE_ENABLED=false
 ### Audit Procedures
 
 **Monthly Audits**:
+
 - Review autonomy usage patterns
 - Validate privacy controls
 - Assess performance impact
 
 **Incident Response**:
+
 - Automated alerts for anomalies
 - Immediate rollback capabilities
 - Post-mortem analysis procedures
@@ -268,11 +290,13 @@ export AUTONOMOUS_CONTINUE_ENABLED=false
 ## Support & Contacts
 
 ### Technical Support
+
 - **Development**: autonomy-dev@neo-clone.internal
 - **Operations**: autonomy-ops@neo-clone.internal
 - **Security**: security@neo-clone.internal
 
 ### Documentation
+
 - **API Reference**: `/docs/api/autopilot`
 - **Telemetry Schema**: `/docs/telemetry/autonomy`
 - **Troubleshooting**: `/docs/troubleshooting/autonomy`
@@ -282,11 +306,13 @@ export AUTONOMOUS_CONTINUE_ENABLED=false
 ## Quick Reference
 
 ### Enable Autonomy
+
 ```bash
 export AUTONOMOUS_CONTINUE_ENABLED=true
 ```
 
 ### Monitor Health
+
 ```bash
 # Check autonomy metrics
 curl /api/metrics/autonomy
@@ -296,12 +322,14 @@ curl /api/telemetry/autonomy/recent
 ```
 
 ### Emergency Disable
+
 ```bash
 export AUTONOMOUS_CONTINUE_ENABLED=false
 # Restart services to pick up flag change
 ```
 
 ### Key Metrics
+
 - Autonomy events per day
 - Success rate (>95%)
 - Error rate (<5%)
@@ -309,4 +337,4 @@ export AUTONOMOUS_CONTINUE_ENABLED=false
 
 ---
 
-*This document is maintained by the Credibility Engineering team. Last updated: 2025-11-16*
+_This document is maintained by the Credibility Engineering team. Last updated: 2025-11-16_

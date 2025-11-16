@@ -199,10 +199,13 @@ export const DataInspectorTool = Tool.define("datainspector", {
         setImmediate(async () => {
           try {
             const nextTaskContent = generateDataInspectorFollowUp(details, inferredFormat)
-            await scheduleNextTask({
-              sessionID: ctx.sessionID,
-              currentTaskId: ctx.callID,
-            }, nextTaskContent)
+            await scheduleNextTask(
+              {
+                sessionID: ctx.sessionID,
+                currentTaskId: ctx.callID,
+              },
+              nextTaskContent,
+            )
           } catch (error) {
             // Autonomy failures should not break the main tool execution
             console.warn("DataInspector autonomy scheduling failed:", error)

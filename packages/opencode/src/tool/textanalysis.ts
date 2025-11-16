@@ -473,10 +473,13 @@ export const TextAnalysisTool = Tool.define("textanalysis", {
         setImmediate(async () => {
           try {
             const nextTaskContent = generateTextAnalysisFollowUp(analysis, params.text)
-            await scheduleNextTask({
-              sessionID: ctx.sessionID,
-              currentTaskId: ctx.callID,
-            }, nextTaskContent)
+            await scheduleNextTask(
+              {
+                sessionID: ctx.sessionID,
+                currentTaskId: ctx.callID,
+              },
+              nextTaskContent,
+            )
           } catch (error) {
             // Autonomy failures should not break the main tool execution
             console.warn("TextAnalysis autonomy scheduling failed:", error)

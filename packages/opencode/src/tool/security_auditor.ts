@@ -19,7 +19,7 @@ export const SecurityAuditorTool = Tool.define("security_auditor", {
         return {
           title: "Security Vulnerability Scan",
           output: await scanForVulnerabilities(code, language),
-          metadata: { action: "security_scan", language, vulnerabilities_found: true }
+          metadata: { action: "security_scan", language, vulnerabilities_found: true },
         }
 
       case "analyze":
@@ -27,7 +27,7 @@ export const SecurityAuditorTool = Tool.define("security_auditor", {
         return {
           title: "Security Analysis Report",
           output: await analyzeSecurityPosture(code, language, appContext),
-          metadata: { action: "security_analysis", language, analysis_complete: true }
+          metadata: { action: "security_analysis", language, analysis_complete: true },
         }
 
       case "audit":
@@ -35,14 +35,14 @@ export const SecurityAuditorTool = Tool.define("security_auditor", {
         return {
           title: "Security Audit Report",
           output: await performSecurityAudit(code, language),
-          metadata: { action: "security_audit", language, audit_complete: true }
+          metadata: { action: "security_audit", language, audit_complete: true },
         }
 
       case "recommend":
         return {
           title: "Security Best Practices",
           output: await generateSecurityRecommendations(language, appContext),
-          metadata: { action: "security_recommendations", language: language || "general" }
+          metadata: { action: "security_recommendations", language: language || "general" },
         }
 
       default:
@@ -56,53 +56,53 @@ async function scanForVulnerabilities(code: string, language?: string) {
   const vulnerabilities = []
 
   // Common vulnerability patterns
-  if (code.includes('eval(') || code.includes('Function(')) {
+  if (code.includes("eval(") || code.includes("Function(")) {
     vulnerabilities.push({
-      type: 'Code Injection',
-      severity: 'Critical',
-      description: 'Use of eval() or Function() can lead to code injection attacks',
-      line: findLineWithPattern(code, 'eval\\(|Function\\('),
-      recommendation: 'Avoid eval() and Function(). Use safer alternatives.'
+      type: "Code Injection",
+      severity: "Critical",
+      description: "Use of eval() or Function() can lead to code injection attacks",
+      line: findLineWithPattern(code, "eval\\(|Function\\("),
+      recommendation: "Avoid eval() and Function(). Use safer alternatives.",
     })
   }
 
-  if (code.includes('innerHTML') || code.includes('outerHTML')) {
+  if (code.includes("innerHTML") || code.includes("outerHTML")) {
     vulnerabilities.push({
-      type: 'XSS Vulnerability',
-      severity: 'High',
-      description: 'Direct assignment to innerHTML can lead to XSS attacks',
-      line: findLineWithPattern(code, 'innerHTML|outerHTML'),
-      recommendation: 'Use textContent or sanitize HTML input.'
+      type: "XSS Vulnerability",
+      severity: "High",
+      description: "Direct assignment to innerHTML can lead to XSS attacks",
+      line: findLineWithPattern(code, "innerHTML|outerHTML"),
+      recommendation: "Use textContent or sanitize HTML input.",
     })
   }
 
   if (code.match(/password.*=.*["'][^"']*["']/i)) {
     vulnerabilities.push({
-      type: 'Hardcoded Credentials',
-      severity: 'High',
-      description: 'Potential hardcoded passwords or secrets detected',
+      type: "Hardcoded Credentials",
+      severity: "High",
+      description: "Potential hardcoded passwords or secrets detected",
       line: findLineWithPattern(code, /password.*=.*["'][^"']*["']/i),
-      recommendation: 'Use environment variables or secure credential storage.'
+      recommendation: "Use environment variables or secure credential storage.",
     })
   }
 
-  if (code.includes('console.log') && !code.includes('NODE_ENV')) {
+  if (code.includes("console.log") && !code.includes("NODE_ENV")) {
     vulnerabilities.push({
-      type: 'Information Disclosure',
-      severity: 'Medium',
-      description: 'Console logging in production can leak sensitive information',
-      line: findLineWithPattern(code, 'console\\.log'),
-      recommendation: 'Remove console.log statements or use conditional logging.'
+      type: "Information Disclosure",
+      severity: "Medium",
+      description: "Console logging in production can leak sensitive information",
+      line: findLineWithPattern(code, "console\\.log"),
+      recommendation: "Remove console.log statements or use conditional logging.",
     })
   }
 
-  if (code.includes('SQL') && (code.includes('${') || code.includes('template'))) {
+  if (code.includes("SQL") && (code.includes("${") || code.includes("template"))) {
     vulnerabilities.push({
-      type: 'SQL Injection',
-      severity: 'Critical',
-      description: 'String interpolation in SQL queries can lead to injection attacks',
-      line: findLineWithPattern(code, 'SQL.*\\$\\{'),
-      recommendation: 'Use parameterized queries or prepared statements.'
+      type: "SQL Injection",
+      severity: "Critical",
+      description: "String interpolation in SQL queries can lead to injection attacks",
+      line: findLineWithPattern(code, "SQL.*\\$\\{"),
+      recommendation: "Use parameterized queries or prepared statements.",
     })
   }
 
@@ -110,19 +110,23 @@ async function scanForVulnerabilities(code: string, language?: string) {
 
 **Total Vulnerabilities Found:** ${vulnerabilities.length}
 
-${vulnerabilities.map((vuln, index) => `### ${index + 1}. ${vuln.type} (${vuln.severity})
+${vulnerabilities
+  .map(
+    (vuln, index) => `### ${index + 1}. ${vuln.type} (${vuln.severity})
 **Description:** ${vuln.description}
 **Location:** Line ${vuln.line}
 **Recommendation:** ${vuln.recommendation}
-`).join('\n')}
+`,
+  )
+  .join("\n")}
 
 ### Summary
-- **Critical:** ${vulnerabilities.filter(v => v.severity === 'Critical').length}
-- **High:** ${vulnerabilities.filter(v => v.severity === 'High').length}
-- **Medium:** ${vulnerabilities.filter(v => v.severity === 'Medium').length}
-- **Low:** ${vulnerabilities.filter(v => v.severity === 'Low').length}
+- **Critical:** ${vulnerabilities.filter((v) => v.severity === "Critical").length}
+- **High:** ${vulnerabilities.filter((v) => v.severity === "High").length}
+- **Medium:** ${vulnerabilities.filter((v) => v.severity === "Medium").length}
+- **Low:** ${vulnerabilities.filter((v) => v.severity === "Low").length}
 
-${vulnerabilities.length === 0 ? '**✅ No critical vulnerabilities detected**' : '**⚠️ Review and fix identified issues**'}`
+${vulnerabilities.length === 0 ? "**✅ No critical vulnerabilities detected**" : "**⚠️ Review and fix identified issues**"}`
 }
 
 async function analyzeSecurityPosture(code: string, language?: string, context?: string) {
@@ -132,7 +136,7 @@ async function analyzeSecurityPosture(code: string, language?: string, context?:
     dataProtection: checkDataProtection(code),
     inputValidation: checkInputValidation(code),
     errorHandling: checkErrorHandling(code),
-    overallScore: 0
+    overallScore: 0,
   }
 
   // Calculate overall security score
@@ -141,7 +145,7 @@ async function analyzeSecurityPosture(code: string, language?: string, context?:
     analysis.authorization.score,
     analysis.dataProtection.score,
     analysis.inputValidation.score,
-    analysis.errorHandling.score
+    analysis.errorHandling.score,
   ]
   analysis.overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
 
@@ -151,23 +155,23 @@ async function analyzeSecurityPosture(code: string, language?: string, context?:
 
 ### Authentication & Access Control
 **Score:** ${analysis.authentication.score}/100
-${analysis.authentication.issues.map(issue => `- ${issue}`).join('\n')}
+${analysis.authentication.issues.map((issue) => `- ${issue}`).join("\n")}
 
 ### Authorization
 **Score:** ${analysis.authorization.score}/100
-${analysis.authorization.issues.map(issue => `- ${issue}`).join('\n')}
+${analysis.authorization.issues.map((issue) => `- ${issue}`).join("\n")}
 
 ### Data Protection
 **Score:** ${analysis.dataProtection.score}/100
-${analysis.dataProtection.issues.map(issue => `- ${issue}`).join('\n')}
+${analysis.dataProtection.issues.map((issue) => `- ${issue}`).join("\n")}
 
 ### Input Validation
 **Score:** ${analysis.inputValidation.score}/100
-${analysis.inputValidation.issues.map(issue => `- ${issue}`).join('\n')}
+${analysis.inputValidation.issues.map((issue) => `- ${issue}`).join("\n")}
 
 ### Error Handling
 **Score:** ${analysis.errorHandling.score}/100
-${analysis.errorHandling.issues.map(issue => `- ${issue}`).join('\n')}
+${analysis.errorHandling.issues.map((issue) => `- ${issue}`).join("\n")}
 
 ### Recommendations
 ${generateSecurityRecommendations(language, context)}`
@@ -178,22 +182,22 @@ async function performSecurityAudit(code: string, language?: string) {
     compliance: checkCompliance(code, language),
     architecture: reviewArchitecture(code),
     dependencies: analyzeDependencies(code),
-    configuration: checkConfiguration(code)
+    configuration: checkConfiguration(code),
   }
 
   return `## Security Audit Report
 
 ### Compliance Check
-${audit.compliance.map(item => `- ${item}`).join('\n')}
+${audit.compliance.map((item) => `- ${item}`).join("\n")}
 
 ### Architecture Review
-${audit.architecture.map(item => `- ${item}`).join('\n')}
+${audit.architecture.map((item) => `- ${item}`).join("\n")}
 
 ### Dependency Analysis
-${audit.dependencies.map(item => `- ${item}`).join('\n')}
+${audit.dependencies.map((item) => `- ${item}`).join("\n")}
 
 ### Configuration Review
-${audit.configuration.map(item => `- ${item}`).join('\n')}
+${audit.configuration.map((item) => `- ${item}`).join("\n")}
 
 ### Audit Summary
 This audit provides a comprehensive review of security controls, architecture, and compliance. Address any critical findings immediately and implement recommended improvements.`
@@ -201,39 +205,39 @@ This audit provides a comprehensive review of security controls, architecture, a
 
 async function generateSecurityRecommendations(language?: string, context?: string) {
   const recommendations = [
-    'Implement proper input validation and sanitization',
-    'Use parameterized queries to prevent SQL injection',
-    'Implement proper authentication and session management',
-    'Use HTTPS for all communications',
-    'Implement proper error handling without information leakage',
-    'Regular security updates and patch management',
-    'Implement least privilege access controls',
-    'Regular security testing and code reviews',
-    'Use security headers (CSP, HSTS, etc.)',
-    'Implement proper logging and monitoring'
+    "Implement proper input validation and sanitization",
+    "Use parameterized queries to prevent SQL injection",
+    "Implement proper authentication and session management",
+    "Use HTTPS for all communications",
+    "Implement proper error handling without information leakage",
+    "Regular security updates and patch management",
+    "Implement least privilege access controls",
+    "Regular security testing and code reviews",
+    "Use security headers (CSP, HSTS, etc.)",
+    "Implement proper logging and monitoring",
   ]
 
-  if (language === 'javascript' || language === 'typescript') {
+  if (language === "javascript" || language === "typescript") {
     recommendations.push(
-      'Use helmet.js for security headers',
-      'Implement rate limiting',
-      'Use bcrypt for password hashing',
-      'Validate JWT tokens properly'
+      "Use helmet.js for security headers",
+      "Implement rate limiting",
+      "Use bcrypt for password hashing",
+      "Validate JWT tokens properly",
     )
   }
 
-  if (language === 'python') {
+  if (language === "python") {
     recommendations.push(
-      'Use secure coding practices for Django/Flask',
-      'Implement proper CSRF protection',
-      'Use secure session handling',
-      'Validate file uploads properly'
+      "Use secure coding practices for Django/Flask",
+      "Implement proper CSRF protection",
+      "Use secure session handling",
+      "Validate file uploads properly",
     )
   }
 
   return `## Security Best Practices Recommendations
 
-${recommendations.map(rec => `- ${rec}`).join('\n')}
+${recommendations.map((rec) => `- ${rec}`).join("\n")}
 
 ### Implementation Priority
 1. **Critical**: Input validation, authentication, authorization
@@ -250,8 +254,8 @@ ${recommendations.map(rec => `- ${rec}`).join('\n')}
 
 // Helper functions
 function findLineWithPattern(code: string, pattern: string | RegExp): number {
-  const lines = code.split('\n')
-  const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern
+  const lines = code.split("\n")
+  const regex = typeof pattern === "string" ? new RegExp(pattern) : pattern
 
   for (let i = 0; i < lines.length; i++) {
     if (regex.test(lines[i])) {
@@ -261,57 +265,57 @@ function findLineWithPattern(code: string, pattern: string | RegExp): number {
   return 0
 }
 
-function checkAuthentication(code: string): { score: number, issues: string[] } {
+function checkAuthentication(code: string): { score: number; issues: string[] } {
   const issues = []
   let score = 100
 
-  if (!code.includes('password') && !code.includes('auth')) {
-    issues.push('No authentication mechanisms detected')
+  if (!code.includes("password") && !code.includes("auth")) {
+    issues.push("No authentication mechanisms detected")
     score -= 30
   }
 
-  if (code.includes('password.*=.*["\'][^"\']*["\']')) {
-    issues.push('Potential hardcoded passwords detected')
+  if (code.includes("password.*=.*[\"'][^\"']*[\"']")) {
+    issues.push("Potential hardcoded passwords detected")
     score -= 40
   }
 
-  if (!code.includes('session') && !code.includes('token')) {
-    issues.push('No session management detected')
+  if (!code.includes("session") && !code.includes("token")) {
+    issues.push("No session management detected")
     score -= 20
   }
 
   return { score: Math.max(0, score), issues }
 }
 
-function checkAuthorization(code: string): { score: number, issues: string[] } {
+function checkAuthorization(code: string): { score: number; issues: string[] } {
   const issues = []
   let score = 100
 
-  if (!code.includes('role') && !code.includes('permission')) {
-    issues.push('No role-based access control detected')
+  if (!code.includes("role") && !code.includes("permission")) {
+    issues.push("No role-based access control detected")
     score -= 25
   }
 
-  if (!code.includes('admin') && !code.includes('user.*role')) {
-    issues.push('No user role validation detected')
+  if (!code.includes("admin") && !code.includes("user.*role")) {
+    issues.push("No user role validation detected")
     score -= 25
   }
 
   return { score: Math.max(0, score), issues }
 }
 
-function checkDataProtection(code: string): { score: number, issues: string[] } {
+function checkDataProtection(code: string): { score: number; issues: string[] } {
   const issues = []
   let score = 100
 
-  if (code.includes('password') && !code.includes('hash') && !code.includes('encrypt')) {
-    issues.push('Passwords may not be properly hashed')
+  if (code.includes("password") && !code.includes("hash") && !code.includes("encrypt")) {
+    issues.push("Passwords may not be properly hashed")
     score -= 40
   }
 
-  if (code.includes('credit.*card') || code.includes('ssn') || code.includes('social')) {
-    if (!code.includes('encrypt')) {
-      issues.push('Sensitive data may not be encrypted')
+  if (code.includes("credit.*card") || code.includes("ssn") || code.includes("social")) {
+    if (!code.includes("encrypt")) {
+      issues.push("Sensitive data may not be encrypted")
       score -= 35
     }
   }
@@ -319,20 +323,20 @@ function checkDataProtection(code: string): { score: number, issues: string[] } 
   return { score: Math.max(0, score), issues }
 }
 
-function checkInputValidation(code: string): { score: number, issues: string[] } {
+function checkInputValidation(code: string): { score: number; issues: string[] } {
   const issues = []
   let score = 100
 
-  if (code.includes('req.body') || code.includes('request.body')) {
-    if (!code.includes('validate') && !code.includes('sanitize')) {
-      issues.push('Request body not validated')
+  if (code.includes("req.body") || code.includes("request.body")) {
+    if (!code.includes("validate") && !code.includes("sanitize")) {
+      issues.push("Request body not validated")
       score -= 30
     }
   }
 
-  if (code.includes('query') || code.includes('params')) {
-    if (!code.includes('validate')) {
-      issues.push('URL parameters not validated')
+  if (code.includes("query") || code.includes("params")) {
+    if (!code.includes("validate")) {
+      issues.push("URL parameters not validated")
       score -= 25
     }
   }
@@ -340,17 +344,17 @@ function checkInputValidation(code: string): { score: number, issues: string[] }
   return { score: Math.max(0, score), issues }
 }
 
-function checkErrorHandling(code: string): { score: number, issues: string[] } {
+function checkErrorHandling(code: string): { score: number; issues: string[] } {
   const issues = []
   let score = 100
 
-  if (!code.includes('try') && !code.includes('catch')) {
-    issues.push('No error handling detected')
+  if (!code.includes("try") && !code.includes("catch")) {
+    issues.push("No error handling detected")
     score -= 30
   }
 
-  if (code.includes('console.log') && code.includes('error')) {
-    issues.push('Errors may be logged with sensitive information')
+  if (code.includes("console.log") && code.includes("error")) {
+    issues.push("Errors may be logged with sensitive information")
     score -= 20
   }
 
@@ -360,15 +364,15 @@ function checkErrorHandling(code: string): { score: number, issues: string[] } {
 function checkCompliance(code: string, language?: string): string[] {
   const compliance = []
 
-  if (language === 'javascript' || language === 'typescript') {
-    compliance.push('✅ OWASP Top 10 compliance check recommended')
-    compliance.push('✅ GDPR compliance for data handling')
-    compliance.push('✅ CORS policy properly configured')
+  if (language === "javascript" || language === "typescript") {
+    compliance.push("✅ OWASP Top 10 compliance check recommended")
+    compliance.push("✅ GDPR compliance for data handling")
+    compliance.push("✅ CORS policy properly configured")
   }
 
-  compliance.push('✅ Regular security audits scheduled')
-  compliance.push('✅ Security headers implemented')
-  compliance.push('✅ Dependency vulnerability scanning active')
+  compliance.push("✅ Regular security audits scheduled")
+  compliance.push("✅ Security headers implemented")
+  compliance.push("✅ Dependency vulnerability scanning active")
 
   return compliance
 }
@@ -376,20 +380,20 @@ function checkCompliance(code: string, language?: string): string[] {
 function reviewArchitecture(code: string): string[] {
   const architecture = []
 
-  if (code.includes('middleware') || code.includes('interceptor')) {
-    architecture.push('✅ Security middleware/interceptors implemented')
+  if (code.includes("middleware") || code.includes("interceptor")) {
+    architecture.push("✅ Security middleware/interceptors implemented")
   } else {
-    architecture.push('⚠️ Consider implementing security middleware')
+    architecture.push("⚠️ Consider implementing security middleware")
   }
 
-  if (code.includes('rate.limit') || code.includes('throttle')) {
-    architecture.push('✅ Rate limiting implemented')
+  if (code.includes("rate.limit") || code.includes("throttle")) {
+    architecture.push("✅ Rate limiting implemented")
   } else {
-    architecture.push('⚠️ Rate limiting not detected')
+    architecture.push("⚠️ Rate limiting not detected")
   }
 
-  architecture.push('✅ Secure coding practices followed')
-  architecture.push('✅ Defense in depth approach implemented')
+  architecture.push("✅ Secure coding practices followed")
+  architecture.push("✅ Defense in depth approach implemented")
 
   return architecture
 }
@@ -397,10 +401,10 @@ function reviewArchitecture(code: string): string[] {
 function analyzeDependencies(code: string): string[] {
   const dependencies = []
 
-  dependencies.push('✅ Dependencies scanned for vulnerabilities')
-  dependencies.push('✅ No outdated security-critical packages')
-  dependencies.push('✅ Secure package sources verified')
-  dependencies.push('✅ Dependency lockdown files used')
+  dependencies.push("✅ Dependencies scanned for vulnerabilities")
+  dependencies.push("✅ No outdated security-critical packages")
+  dependencies.push("✅ Secure package sources verified")
+  dependencies.push("✅ Dependency lockdown files used")
 
   return dependencies
 }
@@ -408,20 +412,20 @@ function analyzeDependencies(code: string): string[] {
 function checkConfiguration(code: string): string[] {
   const configuration = []
 
-  if (code.includes('NODE_ENV') || code.includes('environment')) {
-    configuration.push('✅ Environment-specific configurations')
+  if (code.includes("NODE_ENV") || code.includes("environment")) {
+    configuration.push("✅ Environment-specific configurations")
   }
 
-  if (code.includes('secret') || code.includes('key')) {
-    if (code.includes('process.env') || code.includes('config')) {
-      configuration.push('✅ Secrets properly externalized')
+  if (code.includes("secret") || code.includes("key")) {
+    if (code.includes("process.env") || code.includes("config")) {
+      configuration.push("✅ Secrets properly externalized")
     } else {
-      configuration.push('⚠️ Secrets may be hardcoded')
+      configuration.push("⚠️ Secrets may be hardcoded")
     }
   }
 
-  configuration.push('✅ Security configurations documented')
-  configuration.push('✅ Configuration validated on startup')
+  configuration.push("✅ Security configurations documented")
+  configuration.push("✅ Configuration validated on startup")
 
   return configuration
 }

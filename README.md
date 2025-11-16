@@ -9,27 +9,32 @@ This release contains your complete OpenCode + Neo-Clone system with **36+ free 
 ## 🚀 **Quick Start**
 
 ### **Prerequisites**
+
 - **Bun** (for OpenCode)
 - **Python 3.8+** (for Neo-Clone)
 
 ### **Installation**
+
 1. **Extract & Install:**
+
    ```bash
    cd opencode && bun install
    cd neo-clone && pip install -r requirements.txt
    ```
 
 2. **Configure Free Models:**
+
    ```bash
    cd ..
    opencode config set model "opencode/big-pickle"
    ```
 
 3. **Launch Your System:**
+
    ```bash
    # Terminal 1: OpenCode Server
    bun dev
-   
+
    # Terminal 2: Enhanced Neo-Clone TUI
    cd neo-clone && python main.py --enhanced
    ```
@@ -37,6 +42,7 @@ This release contains your complete OpenCode + Neo-Clone system with **36+ free 
 **That's it!** Your complete AI coding assistant is running with 100% free models.
 
 ### **📋 See Also**
+
 - **Detailed Installation**: `INSTALLATION_GUIDE.md`
 - **Update Instructions**: `CLINES_UPDATE_TASK.md`
 - **System Verification**: Run `python detailed_verification.py`

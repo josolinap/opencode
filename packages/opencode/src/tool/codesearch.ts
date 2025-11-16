@@ -42,35 +42,35 @@ function generateCodeSearchFollowUp(query: string, output: string): string {
   const lowerOutput = output.toLowerCase()
 
   // Check for common code search patterns and suggest follow-ups
-  if (lowerQuery.includes('error') || lowerQuery.includes('exception') || lowerQuery.includes('bug')) {
+  if (lowerQuery.includes("error") || lowerQuery.includes("exception") || lowerQuery.includes("bug")) {
     return "Analyze error patterns and suggest comprehensive error handling improvements"
   }
 
-  if (lowerQuery.includes('test') || lowerQuery.includes('spec') || lowerQuery.includes('unit test')) {
+  if (lowerQuery.includes("test") || lowerQuery.includes("spec") || lowerQuery.includes("unit test")) {
     return "Review test coverage and suggest additional test cases for edge conditions"
   }
 
-  if (lowerQuery.includes('performance') || lowerQuery.includes('optimization') || lowerQuery.includes('speed')) {
+  if (lowerQuery.includes("performance") || lowerQuery.includes("optimization") || lowerQuery.includes("speed")) {
     return "Analyze performance bottlenecks and suggest optimization strategies"
   }
 
-  if (lowerQuery.includes('security') || lowerQuery.includes('auth') || lowerQuery.includes('vulnerability')) {
+  if (lowerQuery.includes("security") || lowerQuery.includes("auth") || lowerQuery.includes("vulnerability")) {
     return "Review security implications and suggest hardening measures"
   }
 
-  if (lowerQuery.includes('refactor') || lowerQuery.includes('clean') || lowerQuery.includes('improve')) {
+  if (lowerQuery.includes("refactor") || lowerQuery.includes("clean") || lowerQuery.includes("improve")) {
     return "Identify refactoring opportunities and propose code improvements"
   }
 
-  if (lowerOutput.includes('async') || lowerOutput.includes('promise') || lowerOutput.includes('await')) {
+  if (lowerOutput.includes("async") || lowerOutput.includes("promise") || lowerOutput.includes("await")) {
     return "Review asynchronous patterns and suggest concurrency improvements"
   }
 
-  if (lowerOutput.includes('database') || lowerOutput.includes('sql') || lowerOutput.includes('query')) {
+  if (lowerOutput.includes("database") || lowerOutput.includes("sql") || lowerOutput.includes("query")) {
     return "Analyze database interactions and suggest query optimizations"
   }
 
-  if (lowerOutput.includes('api') || lowerOutput.includes('endpoint') || lowerOutput.includes('rest')) {
+  if (lowerOutput.includes("api") || lowerOutput.includes("endpoint") || lowerOutput.includes("rest")) {
     return "Review API design patterns and suggest interface improvements"
   }
 
@@ -79,7 +79,7 @@ function generateCodeSearchFollowUp(query: string, output: string): string {
     return "Review comprehensive code examples and extract best practices"
   }
 
-  if (lowerOutput.includes('function') || lowerOutput.includes('method') || lowerOutput.includes('class')) {
+  if (lowerOutput.includes("function") || lowerOutput.includes("method") || lowerOutput.includes("class")) {
     return "Analyze code structure and suggest design pattern improvements"
   }
 
@@ -189,10 +189,13 @@ export const CodeSearchTool = Tool.define("codesearch", {
           setImmediate(async () => {
             try {
               const nextTaskContent = generateCodeSearchFollowUp(params.query, result.output)
-              await scheduleNextTask({
-                sessionID: ctx.sessionID,
-                currentTaskId: ctx.callID,
-              }, nextTaskContent)
+              await scheduleNextTask(
+                {
+                  sessionID: ctx.sessionID,
+                  currentTaskId: ctx.callID,
+                },
+                nextTaskContent,
+              )
             } catch (error) {
               // Autonomy failures should not break the main tool execution
               console.warn("CodeSearch autonomy scheduling failed:", error)

@@ -5,9 +5,7 @@
       "model": "microsoft/DialoGPT-medium",
       "endpoint": "https://api-inference.huggingface.co/models",
       "context_length": 1024,
-      "capabilities": [
-        "reasoning"
-      ],
+      "capabilities": ["reasoning"],
       "cost": "free",
       "response_time": 1.059041976928711
     },
@@ -16,9 +14,7 @@
       "model": "facebook/blenderbot-400M-distill",
       "endpoint": "https://api-inference.huggingface.co/models",
       "context_length": 1024,
-      "capabilities": [
-        "reasoning"
-      ],
+      "capabilities": ["reasoning"],
       "cost": "free",
       "response_time": 1.5656731128692627
     },
@@ -27,9 +23,7 @@
       "model": "google/flan-t5-base",
       "endpoint": "https://api-inference.huggingface.co/models",
       "context_length": 1024,
-      "capabilities": [
-        "reasoning"
-      ],
+      "capabilities": ["reasoning"],
       "cost": "free",
       "response_time": 1.5358827114105225
     },
@@ -38,9 +32,7 @@
       "model": "microsoft/DialoGPT-small",
       "endpoint": "https://api-inference.huggingface.co/models",
       "context_length": 1024,
-      "capabilities": [
-        "reasoning"
-      ],
+      "capabilities": ["reasoning"],
       "cost": "free",
       "response_time": 1.375290870666504
     },
@@ -49,10 +41,7 @@
       "model": "meta/llama-2-7b-chat",
       "endpoint": "https://api.replicate.com/v1",
       "context_length": 4096,
-      "capabilities": [
-        "reasoning",
-        "tool_calling"
-      ],
+      "capabilities": ["reasoning", "tool_calling"],
       "cost": "free",
       "response_time": 2.1979870796203613
     },
@@ -61,10 +50,7 @@
       "model": "mistralai/mistral-7b-instruct-v0.1",
       "endpoint": "https://api.replicate.com/v1",
       "context_length": 4096,
-      "capabilities": [
-        "reasoning",
-        "tool_calling"
-      ],
+      "capabilities": ["reasoning", "tool_calling"],
       "cost": "free",
       "response_time": 1.5344173908233643
     },
@@ -73,10 +59,7 @@
       "model": "togethercomputer/RedPajama-INCITE-7B-Chat",
       "endpoint": "https://api.together.xyz/v1",
       "context_length": 4096,
-      "capabilities": [
-        "reasoning",
-        "tool_calling"
-      ],
+      "capabilities": ["reasoning", "tool_calling"],
       "cost": "free",
       "response_time": 1.3811390399932861
     },
@@ -85,10 +68,7 @@
       "model": "togethercomputer/llama-2-7b-chat",
       "endpoint": "https://api.together.xyz/v1",
       "context_length": 4096,
-      "capabilities": [
-        "reasoning",
-        "tool_calling"
-      ],
+      "capabilities": ["reasoning", "tool_calling"],
       "cost": "free",
       "response_time": 1.1568162441253662
     },
@@ -97,25 +77,18 @@
       "model": "togethercomputer/mistral-7b-instruct-v0.1",
       "endpoint": "https://api.together.xyz/v1",
       "context_length": 4096,
-      "capabilities": [
-        "reasoning",
-        "tool_calling"
-      ],
+      "capabilities": ["reasoning", "tool_calling"],
       "cost": "free",
       "response_time": 1.349531888961792
-  },
-  "minimax/m2": {
-    "provider": "minimax",
-    "model": "m2",
-    "endpoint": "https://api.minimax.chat/v1",
-    "context_length": 128000,
-    "capabilities": [
-      "reasoning",
-      "tool_calling",
-      "temperature"
-    ],
-    "cost": "free",
-    "response_time": 1.25
+    },
+    "minimax/m2": {
+      "provider": "minimax",
+      "model": "m2",
+      "endpoint": "https://api.minimax.chat/v1",
+      "context_length": 128000,
+      "capabilities": ["reasoning", "tool_calling", "temperature"],
+      "cost": "free",
+      "response_time": 1.25
+    }
   }
-}
 }
